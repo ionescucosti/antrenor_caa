@@ -218,3 +218,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Date de rulare si fisiere personale: raman pe disc, nu intra in git
+/media_share_*.jpg
+/img-*.jpg
+/img-*.JPG
+date/*.sqlite3
+date/*.sqlite3-*
+date/backups/
+date/cache/
+rokid_data/
