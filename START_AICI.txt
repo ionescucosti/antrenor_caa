@@ -1,0 +1,52 @@
+ANTRENOR CAA - CATEGORIILE C SI D
+Aplicatie locala de studiu | versiunea 1.0
+
+PORNIRE PE WINDOWS
+1. Extrage COMPLET arhiva ZIP intr-un folder in care poti scrie.
+2. Este necesar Python 3.10 sau mai nou. Daca nu este instalat, instaleaza-l
+   de pe python.org si bifeaza "Add Python to PATH".
+3. Deschide Porneste_Windows.bat prin dublu clic.
+4. La prima pornire, asteapta instalarea PyMuPDF si importul PDF-urilor.
+   Ai nevoie de internet pentru aceasta configurare initiala.
+5. Browserul se deschide automat. Pastreaza fereastra terminalului deschisa
+   cat timp folosesti aplicatia. Adresa locala este afisata in terminal.
+
+PRIMA IMPORTARE A INTREBARILOR
+Aplicatia incearca sa descarce PDF-urile oficiale ANR pentru C si D.
+PDF-urile si intrebarile reale NU sunt preincluse in aceasta arhiva.
+Daca site-ul ANR afiseaza 429 sau descarcarea nu reuseste, deschide
+"Surse & backup" si incarca manual PDF-ul original pentru fiecare categorie.
+Linkurile exacte catre ANR sunt disponibile acolo si in README.md.
+Nu incarca mini-manualul: este nevoie de listele originale cu intrebari.
+
+UTILIZARE
+- Alege C sau D si "Toata categoria", ori o tema de studiu.
+- Raspunde: apare imediat corect/gresit si raspunsul corect complet.
+- Apasa "Urmatoarea intrebare" cand ai citit confirmarea.
+- Poti inchide si reveni: progresul este pastrat in folderul date.
+- "Pauza" / "Schimba categoria" pastreaza locul. Apasa Continua la revenire.
+- "De la inceput" reseteaza numai selectia curenta; istoricul ramane salvat.
+- In Statistici gasesti separat sesiunile si parcurgerile cap-coada.
+
+IMPORTANT
+Dupa import poti studia offline. Nu sunt necesare conturi sau un serviciu
+cloud. Nu sterge folderul date: contine progresul, sursele si statisticile.
+Pentru o copie portabila foloseste "Descarca backup complet".
+Foloseste o singura fila de studiu; o noua sesiune o inchide pe cea veche.
+
+VERIFICARE SI LIMITE
+Sunt incluse 26 de teste automate pentru logica/import si au fost executate
+12 verificari de interfata cu date tehnice de test. PDF-urile ANR originale
+nu au putut fi descarcate ca fisiere in mediul de dezvoltare; importul lor
+integral trebuie verificat la prima pornire. Importatorul refuza randurile
+incomplete, iar cheile lipsa nu sunt ghicite. Citeste README.md si VERIFICARI.txt.
+
+MAC / LINUX
+Deschide terminalul in folder si ruleaza: python3 porneste.py
+Sau: sh Porneste_Mac_Linux.sh
+
+
+ACTUALIZARE 3 noiembrie 2026
+porneste.py porneste acum un singur server care include si backend-ul Rokid AI RAG
+(administrare la http://127.0.0.1:8765/admin, configurare in fisierul .env).
+Aplicatia de studiu ramane la http://127.0.0.1:8765/ si functioneaza la fel.

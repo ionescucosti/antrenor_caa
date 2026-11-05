@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="caa-token" content="__TOKEN__">
+  <meta name="color-scheme" content="light">
+  <title>Antrenor CAA | C &amp; D</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Sari la con&#539;inut</a>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 44 44"><path d="M22 6v26M19 9 5 29h14V9Zm6 7v13h12L25 16Z"/><path d="M6 34h32l-5 5H13Z"/></svg></span>
+    <div><strong>Antrenor CAA</strong><span>CATEGORIILE C &amp; D</span></div>
+  </div>
+  <nav aria-label="Navigare principal&#259;">
+    <button id="navStudy" class="nav active">Antrenament</button>
+    <button id="navStats" class="nav">Statistici</button>
+    <button id="navSources" class="nav">Surse &amp; backup</button>
+  </nav>
+  <div class="local-badge"><span></span> Local, pe calculatorul t&#259;u</div>
+</header>
+<div id="errorBanner" class="error-banner" role="alert" hidden></div>
+<main id="main" tabindex="-1">
+  <div class="loading"><span class="spinner"></span> Se &#238;ncarc&#259; progresul...</div>
+</main>
+<footer class="footer">
+  <span>Instrument independent de studiu. Nu este aplica&#539;ia oficial&#259; ANR.</span>
+  <span>Progres salvat &#238;n fi&#537;ier local, nu &#238;n cookie-uri.</span>
+</footer>
+<div id="toast" class="toast" role="status" hidden></div>
+<dialog id="confirmDialog" aria-labelledby="dialogTitle">
+  <div class="dialog-body"><p class="eyebrow">CONFIRMARE</p><h2 id="dialogTitle"></h2><p id="dialogText"></p>
+  <div class="actions"><button id="dialogCancel" class="button secondary">Anuleaz&#259;</button><button id="dialogOk" class="button primary">Confirm&#259;</button></div></div>
+</dialog>
+<dialog id="detailsDialog" class="large-dialog" aria-labelledby="detailsTitle">
+  <div class="dialog-body"><div class="heading-row"><h2 id="detailsTitle">Detaliile r&#259;spunsurilor</h2><button id="detailsClose" class="button secondary">&#206;nchide</button></div><div id="detailsContent"></div></div>
+</dialog>
+<noscript><p>Aceast&#259; aplica&#539;ie necesit&#259; JavaScript activat &#238;n browser.</p></noscript>
+</body>
+</html>

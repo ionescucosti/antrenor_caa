@@ -1,0 +1,17 @@
+{
+  "records": [
+    {"question": "Which Python type is immutable?", "question_type": "multiple_choice",
+     "options": [{"label": "A", "text": "List"}, {"label": "B", "text": "Dictionary"}, {"label": "C", "text": "Tuple"}, {"label": "D", "text": "Set"}],
+     "correct_answer": ["C"], "explanation": "Tuples are immutable."},
+    {"question": "Which keyword defines a function in Python?", "question_type": "multiple_choice",
+     "options": [{"label": "A", "text": "func"}, {"label": "B", "text": "def"}, {"label": "C", "text": "function"}, {"label": "D", "text": "lambda only"}],
+     "correct_answer": ["B"], "explanation": "Functions are defined with def."},
+    {"question": "Which of the following are valid ways to create an empty dictionary?", "question_type": "multiple_choice",
+     "options": [{"label": "A", "text": "{}"}, {"label": "B", "text": "dict()"}, {"label": "C", "text": "[]"}, {"label": "D", "text": "set()"}],
+     "correct_answer": ["A", "B"], "explanation": "Both {} and dict() create an empty dictionary."},
+    {"question": "Which SQL clause filters rows after aggregation?", "question_type": "multiple_choice",
+     "options": [{"label": "A", "text": "WHERE"}, {"label": "B", "text": "HAVING"}, {"label": "C", "text": "GROUP BY"}, {"label": "D", "text": "ORDER BY"}],
+     "correct_answer": ["B"], "explanation": "HAVING filters groups produced by GROUP BY."},
+    {"question": "What does len('abc') return?", "question_type": "open", "correct_answer": "3", "explanation": "The string has three characters."}
+  ]
+}

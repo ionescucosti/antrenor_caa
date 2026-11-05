@@ -1,0 +1,62 @@
+# Productie: backend + Cloudflare Tunnel (HTTPS public fara porturi deschise).
+#   docker compose up -d --build
+# Alternativa cu Caddy si certificat Let's Encrypt (porturi 80/443 deschise):
+#   docker compose --profile caddy up -d --build
+# Tunel rapid de test, URL aleator *.trycloudflare.com, fara cont Cloudflare:
+#   docker compose --profile quick up --build
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rokid-rag-backend:latest
+    env_file: .env
+    environment:
+      ROKID_DATA_DIR: /data
+      ROKID_CAA_DATA_DIR: /data/caa
+      ROKID_COOKIE_SECURE: "true"
+    volumes:
+      - rokid_data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    # In Cloudflare Zero Trust > Networks > Tunnels > Public hostname: service = http://backend:8000
+
+  cloudflared-quick:
+    profiles: ["quick"]
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  caddy:
+    profiles: ["caddy"]
+    image: caddy:2
+    depends_on:
+      - backend
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  rokid_data:
+  caddy_data:
+  caddy_config:

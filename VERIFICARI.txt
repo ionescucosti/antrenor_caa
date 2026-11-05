@@ -1,0 +1,86 @@
+VERIFICARI - ANTRENOR CAA 1.0
+Data: 15 septembrie 2026
+
+MEDIU
+Python 3.13, PyMuPDF 1.26.7, Chromium headless, Linux.
+Verificare de sintaxa: Python py_compile; JavaScript node --check.
+
+REZULTATE
+26 / 26 teste automate unittest: TRECUT.
+12 / 12 verificari de interfata: TRECUT.
+0 erori JavaScript necapturate in scenariile executate.
+Inspectie vizuala: ecrane desktop si viewport ingust de 390 px.
+
+TESTE DE LOGICA SI IMPORT
+- Tabele standard si coloana Tip foarte ingusta; marcaje 0/1.
+- Variante multiple, numerotare reluata, normalizare, cheie incompleta fara punctaj.
+- Desen vectorial si decupaj PNG; fisiere fara PDF/tabele refuzate.
+- Prima alegere si idempotenta; nu se avanseaza fara raspuns.
+- Reluare, repornire a bazei, categorii separate, reset cu istoric.
+- Parcurgeri complete distincte de teme; procente fara intrebari necorectabile.
+- Schimbare de sursa cu pastrarea istoricului; backup verificat ca arhiva si SQLite.
+- Validarea raspunsurilor, sesiuni vechi respinse, timp activ estimat.
+
+INTERFATA
+- Import C si D prin incarcare PDF, corect/gresit cu confirmare.
+- Reincarcare cu progres pastrat, imagini, schimbare si pauza.
+- Raspunsuri multiple, finalizare, sesiuni/parcurgeri si revizuirea greselilor.
+- Reset cu istoric, profil de browser separat, ecran ingust fara overflow orizontal.
+- Export CSV, backup cu surse, respingerea cererilor fara token sau Host valid.
+
+LIMITE EXPLICITE
+Toate PDF-urile de test sunt sintetice, cu eticheta TEST TEHNIC.
+PDF-urile originale ANR nu au putut fi descarcate ca fisiere in acest mediu.
+Importul integral al originalelor trebuie verificat la prima pornire reala.
+Nu sunt incluse PDF-uri oficiale sau intrebari reale preimportate in pachet.
+
+Browserul mediului de test restrictioneaza navigarea. Testele de interfata au
+folosit HTML/CSS/JS generate local si un adaptor de test care trimite cererile
+catre serverul HTTP real. Nu a fost dezactivata politica browserului. Raportul
+JSON precizeaza modul. Aceasta nu este validarea unei navigari native complete.
+Mesaje de inchidere a adaptorului Playwright pot aparea dupa inchiderea paginilor;
+nu sunt erori JavaScript ale aplicatiei, dar nici nu sunt prezentate ca teste native.
+Launcherele Windows/macOS nu au fost executate pe acele sisteme.
+
+Comanda de reproducere a testelor de baza:
+  python -m unittest discover -s tests -v
+
+ACTUALIZARE - 3 noiembrie 2026 (importer 1.1)
+Importul PDF-urilor originale ANR (clasa C, 25 pagini; clasa D, 20 pagini)
+a fost verificat pe fisierele reale. Eroarea "Pagina 16, intrebarea 343:
+coloane ambigue" era cauzata de o celula goala suplimentara dupa ultima
+coloana Corect (C: p16-17) si de o celula de 3-4 pt cu o cratima scursa din
+raspunsul vecin (D: p3, nr. 40). Textul celulelor se extrage acum dupa
+centrul fiecarui caracter, nu dupa simpla atingere a celulei: cratimele de
+la capat de rand nu mai ajung in celulele Corect (C: nr. 450 devine
+punctabil, cheia tiparita fiind "1"), valorile "Tip" ("11") tiparite peste
+linia dintre intrebare si Raspuns 1 nu mai sunt lipite de text (D: 67 de
+intrebari), iar literele cu descendente din randul precedent nu mai apar.
+Rezultat: C 517 intrebari (516 punctabile; nr. 6 de la pagina 24 are cheia
+goala in original), D 371 intrebari (371 punctabile).
+30 / 30 teste automate unittest: TRECUT (4 teste noi pentru aceste cazuri).
+
+ACTUALIZARE - 3 noiembrie 2026 (resetare si reimport de la zero)
+Adaugate: /api/reset-category (arhiveaza parcurgerile active ale unei
+categorii), parametrul force la /api/download si /api/import/<C|D>?force=1
+(reincarca intrebarile chiar daca PDF-ul este identic si arhiveaza progresul).
+Butoane noi pe pagina Surse & backup, cu confirmare. Adresele ANR actualizate
+la noul portal (wp-content/uploads/2026/07/...).
+32 / 32 teste automate unittest: TRECUT. Test cap-coada pe server real:
+import, raspunsuri, reimport identic fara efect, resetare, reimport fortat,
+cerere fara token respinsa (403).
+
+ACTUALIZARE - 3 noiembrie 2026 (stergerea istoricului)
+Resetarea din Surse & backup si reimportul fortat sterg acum parcurgerile,
+sesiunile si raspunsurile categoriei (statistici de la zero), dupa un backup
+automat al bazei. Pagina Statistici are butonul "Sterge tot istoricul (C + D)".
+/api/reset-category accepta {category: C|D|all, wipe: true}; wipe:false
+pastreaza vechiul comportament de arhivare.
+33 / 33 teste automate unittest: TRECUT.
+
+ACTUALIZARE - 3 noiembrie 2026 (server unic)
+Antrenor CAA si Rokid AI RAG Backend ruleaza in acelasi proces FastAPI (rokid_backend/caa
+porteaza handlerul HTTP din app.py; Engine, importer si interfata static/ sunt reutilizate
+neschimbate). porneste.py lanseaza uvicorn pe portul 8765. Acces la aplicatia de studiu:
+local fara autentificare, de la distanta doar cu sesiune admin. Un DATABASE_URL Postgres
+inaccesibil duce la fallback pe SQLite cu avertisment in /api/v1/health si /admin > Stare.

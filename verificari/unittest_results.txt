@@ -1,0 +1,32 @@
+test_backup_integrity_and_sources (test_core.EngineTests.test_backup_integrity_and_sources) ... ok
+test_categories_independent (test_core.EngineTests.test_categories_independent) ... ok
+test_category_validation (test_core.EngineTests.test_category_validation) ... ok
+test_database_restart_persists_cursor_and_stats (test_core.EngineTests.test_database_restart_persists_cursor_and_stats) ... ok
+test_first_choice_feedback_idempotent (test_core.EngineTests.test_first_choice_feedback_idempotent) ... ok
+test_foreground_timer (test_core.EngineTests.test_foreground_timer) ... ok
+test_full_completion_counted_once (test_core.EngineTests.test_full_completion_counted_once) ... ok
+test_invalid_selection_rejected (test_core.EngineTests.test_invalid_selection_rejected) ... ok
+test_keys_hidden_until_answer (test_core.EngineTests.test_keys_hidden_until_answer) ... ok
+test_multi_answer_exact_set_required (test_core.EngineTests.test_multi_answer_exact_set_required) ... ok
+test_new_bank_archives_history_keeps_snapshot (test_core.EngineTests.test_new_bank_archives_history_keeps_snapshot) ... ok
+test_next_requires_answer (test_core.EngineTests.test_next_requires_answer) ... ok
+test_old_session_cannot_answer (test_core.EngineTests.test_old_session_cannot_answer) ... ok
+test_reimport_same_digest_no_reset (test_core.EngineTests.test_reimport_same_digest_no_reset) ... ok
+test_reset_archives_and_preserves_stats (test_core.EngineTests.test_reset_archives_and_preserves_stats) ... ok
+test_resume_same_question_and_confirmation (test_core.EngineTests.test_resume_same_question_and_confirmation) ... ok
+test_topic_completion_not_full_category (test_core.EngineTests.test_topic_completion_not_full_category) ... ok
+test_ungraded_not_in_percentage (test_core.EngineTests.test_ungraded_not_in_percentage) ... ok
+test_category_validation (test_core.ParserTests.test_category_validation) ... ok
+test_incomplete_key_is_ungraded (test_core.ParserTests.test_incomplete_key_is_ungraded) ... ok
+test_no_table_rejected (test_core.ParserTests.test_no_table_rejected) ... ok
+test_non_pdf_rejected (test_core.ParserTests.test_non_pdf_rejected) ... ok
+test_regular_table_and_flags (test_core.ParserTests.test_regular_table_and_flags) ... ok
+test_romanian_normalization (test_core.ParserTests.test_romanian_normalization) ... ok
+test_tiny_tip_column (test_core.ParserTests.test_tiny_tip_column) ... ok
+test_vector_image_and_original_crop (test_core.ParserTests.test_vector_image_and_original_crop) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 5.527s
+
+OK
+Consider using the pymupdf_layout package for a greatly improved page layout analysis.

@@ -1,0 +1,15 @@
+# Local run without TLS: docker compose -f compose.dev.yaml up
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      ROKID_COOKIE_SECURE: "false"
+      ROKID_ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./rokid_data:/data
+    restart: unless-stopped

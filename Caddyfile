@@ -1,0 +1,15 @@
+{
+  email {$ROKID_ACME_EMAIL}
+}
+
+{$ROKID_DOMAIN} {
+  encode zstd gzip
+  request_body {
+    max_size 60MB
+  }
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    -Server
+  }
+  reverse_proxy backend:8000
+}

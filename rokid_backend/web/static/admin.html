@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rokid RAG Admin</title>
+<link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dot"></span><strong>Rokid AI RAG Backend</strong><span class="muted" id="version"></span></div>
+  <nav id="nav" hidden>
+    <button data-view="documents" class="active">Documente</button>
+    <button data-view="qa">Seturi Q&amp;A</button>
+    <button data-view="kb">Baze de cunostinte</button>
+    <button data-view="test">Test RAG</button>
+    <button data-view="status">Stare</button>
+    <button id="logout" class="subtle">Iesire</button>
+  </nav>
+</header>
+<main id="main"><p class="muted">Se incarca...</p></main>
+<div id="toast" class="toast" hidden></div>
+<script src="/admin/static/admin.js"></script>
+</body>
+</html>

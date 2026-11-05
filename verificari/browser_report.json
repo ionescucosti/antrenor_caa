@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "browserMode": "local DOM with HTTP test adapter",
+  "checks": [
+    "PDF upload/import from the UI, both C and D",
+    "Incorrect answer shows the correct full answer, with one saved attempt",
+    "Reload resumes the same confirmation, starts a new session, no duplicate attempt",
+    "Original vector illustration rendered and correct answer confirmed",
+    "Switching categories and pausing preserves independent progress",
+    "Multiple-correct-answer handling and category completion",
+    "Separate session/run statistics, review of mistakes, CSV export",
+    "Reset starts from the beginning and retains completed and reset histories",
+    "Independent browser profile resumes local data; mobile layout has no horizontal overflow",
+    "Full backup contains progress database and both imported PDFs",
+    "Missing CSRF token and invalid Host are rejected",
+    "No uncaught browser JavaScript errors"
+  ],
+  "count": 12,
+  "javascriptErrors": [],
+  "scope": "Synthetic PDF fixtures only. Official ANR PDFs were not available as local bytes."
+}
