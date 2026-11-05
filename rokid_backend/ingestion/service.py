@@ -12,7 +12,7 @@ from rokid_backend.core.text import sha256_bytes
 from rokid_backend.ingestion.chunking import chunk_blocks
 from rokid_backend.ingestion.parsers import ParseError, parse_document, sniff_type
 from rokid_backend.models import Document, IngestionJob, KnowledgeBase, new_id
-from rokid_backend.rag.embeddings import EmbeddingProvider
+from rokid_backend.rag.embeddings import EmbeddingError, EmbeddingProvider
 from rokid_backend.rag.vectorstore import VectorStore
 
 log = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class DocumentService:
             return self.get(document_id)
         except Exception as exc:  # noqa: BLE001 - any parser crash must surface as a failed job
             log.exception("document indexing crashed", extra={"document_id": document_id})
-            message = f"Eroare interna la indexare: {type(exc).__name__}"
+            message = str(exc) if isinstance(exc, EmbeddingError) else f"Eroare interna la indexare: {type(exc).__name__}"
             self._mark_failed(document_id, message)
             self._finish_job(job_id, "failed", message, stages)
             return self.get(document_id)

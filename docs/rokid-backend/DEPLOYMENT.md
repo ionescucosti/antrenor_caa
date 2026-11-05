@@ -42,8 +42,10 @@ Completeaza in `.env`:
 
 - `ROKID_ENVIRONMENT=production`, `ROKID_COOKIE_SECURE=true` (HTTPS vine de la Cloudflare).
 - `ROKID_ADMIN_PASSWORD` (sau hash pbkdf2), `ROKID_DEVICE_TOKENS=<token-lung-aleator>` pentru ochelari.
-- `OPENAI_API_KEY`, `OPENAI_MODEL` (sau `ROKID_LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`),
-  `ROKID_EMBEDDING_PROVIDER=openai` (acelasi furnizor ca local, altfel reindexezi).
+- `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-6.1-sol` (raspuns din documentatie), `ROKID_WEB_SEARCH_MODEL=gpt-6.1-terra`
+  (cautare web) si `ROKID_VISION_MODEL=gpt-6-luna` (poze), sau
+  `ROKID_LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`. `ROKID_EMBEDDING_PROVIDER=openai` cu
+  `ROKID_EMBEDDING_MODEL=text-embedding-3-small` (acelasi furnizor si model ca local, altfel reindexezi).
 - `DATABASE_URL=postgresql+psycopg://...` daca folosesti Postgres; altfel lasa gol (SQLite in `rokid_data/`).
 - `CLOUDFLARE_TUNNEL_TOKEN=<tokenul de la pasul 1>`.
 

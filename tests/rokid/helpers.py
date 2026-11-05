@@ -23,7 +23,8 @@ def make_settings(tmp_path: Path, **overrides) -> Settings:
     base = dict(environment="test", data_dir=tmp_path / "data", admin_password="secret-pass", admin_api_token=ADMIN_TOKEN,
                 device_tokens=DEVICE_TOKEN, embedding_provider="hash", llm_provider="mock", log_level="WARNING",
                 semantic_question_threshold=0.75, semantic_question_evidence_floor=0.3, rate_limit_per_minute=600, rate_limit_burst=200,
-                caa_data_dir=tmp_path / "caa")
+                caa_data_dir=tmp_path / "caa", answer_grounding="strict", web_search_enabled=False,
+                vision_crop_model_fallback=False, vision_min_sharpness=0)
     base.update(overrides)
     return Settings(_env_file=None, **base)
 

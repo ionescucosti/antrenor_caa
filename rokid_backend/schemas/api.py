@@ -76,8 +76,9 @@ class SourceRef(BaseModel):
     document_name: str
     page: int | None = None
     section: str | None = None
-    kind: Literal["document", "qa_dataset"] = "document"
+    kind: Literal["document", "qa_dataset", "web"] = "document"
     score: float | None = None
+    url: str | None = None   # web sources only
 
 
 class AnswerResponse(BaseModel):
@@ -87,7 +88,11 @@ class AnswerResponse(BaseModel):
     sources: list[SourceRef] = Field(default_factory=list)
     processing_time_ms: int = 0
     message: str = ""
-    match_type: Literal["exact_qa", "semantic_qa", "rag", "general_knowledge", "none"] = "none"
+    match_type: Literal["exact_qa", "semantic_qa", "rag", "rag_web", "web", "general_knowledge", "none"] = "none"
+    # verified: from a verified set; consensus: documentation and web agree; docs_only / web_only: one of them answered;
+    # disagreement: both answered differently (the explanation starts with "Verifica:")
+    agreement: Literal["verified", "consensus", "docs_only", "web_only", "disagreement", "none"] = "none"
+    candidate_id: str | None = None       # non-verified answers are kept for review in admin (confirm -> verified set)
     timings_ms: dict[str, float] = Field(default_factory=dict)
     transcribed_text: str | None = None   # set when the answer came from the uploaded image
 
@@ -97,6 +102,7 @@ class CompactAnswer(BaseModel):
     label: str | None = None   # "A", or "A,C" for several correct options; null for open questions / no answer
     text: str | None = None    # text of the correct option(s) or the short answer
     error: str | None = None   # set only when there is no answer
+    note: str | None = None    # set when the answer is not verified and the sources disagree ("verifica")
 
 
 # --- Administration ---------------------------------------------------------
@@ -189,3 +195,29 @@ class TokenOut(BaseModel):
     created_at: float
     last_used_at: float | None
     token: str | None = None  # only returned once, at creation
+
+
+class CandidateOut(BaseModel):
+    id: str
+    kb_id: str
+    question: str
+    options: list[Any]
+    option_labels: list[Any]
+    answer_text: str
+    explanation: str
+    agreement: str
+    match_type: str
+    docs_labels: list[Any]
+    web_labels: list[Any]
+    sources: list[Any]
+    request_id: str
+    status: str
+    seen_count: int
+    record_id: str | None
+    created_at: float
+    updated_at: float
+
+
+class CandidateDecisionIn(BaseModel):
+    option_labels: list[str] | None = None   # None = keep the proposed answer
+    explanation: str = Field(default="", max_length=2000)

@@ -13,11 +13,14 @@ from sqlalchemy import func, select
 from rokid_backend.core.text import match_key, normalize_text, question_hash, strip_option_label
 from rokid_backend.models import IngestionJob, KnowledgeBase, QADataset, QARecord, new_id
 from rokid_backend.qa.dataset import DatasetError, QARecordDraft, parse_qa_dataset
-from rokid_backend.rag.embeddings import EmbeddingProvider
+from rokid_backend.rag.embeddings import EmbeddingError, EmbeddingProvider
 from rokid_backend.rag.vectorstore import VectorStore
 from rokid_backend.schemas.api import Option
 
 log = logging.getLogger(__name__)
+
+CONFIRMED_FORMAT = "confirmed"            # dataset holding answers confirmed from admin (no source file; records live in the DB)
+CONFIRMED_NAME = "Confirmate din admin"
 
 
 class QAError(ValueError):
@@ -126,7 +129,10 @@ class QAService:
             dataset.status = "processing"
             kb_id, filename, path = dataset.kb_id, dataset.filename, Path(dataset.stored_path)
             category = next((w.split("=", 1)[1] for w in dataset.warnings if str(w).startswith("anr_category=")), None)
+            confirmed = dataset.format == CONFIRMED_FORMAT
             self._update_job(job_id, "running", "Se valideaza inregistrarile...")
+        if confirmed:
+            return self._reindex_confirmed(dataset_id, kb_id, job_id, stages, started)
         try:
             t = time.perf_counter()
             parsed = parse_qa_dataset(filename, path.read_bytes(), stored_path=path, anr_category=category)
@@ -143,7 +149,7 @@ class QAService:
             return self.get(dataset_id)
         except Exception as exc:  # noqa: BLE001
             log.exception("qa dataset indexing crashed")
-            message = f"Eroare interna: {type(exc).__name__}"
+            message = str(exc) if isinstance(exc, EmbeddingError) else f"Eroare interna: {type(exc).__name__}"
             self._mark_failed(dataset_id, message)
             self._finish_job(job_id, "failed", message, stages)
             return self.get(dataset_id)
@@ -157,6 +163,32 @@ class QAService:
             dataset.embedding_provider = self.embedder.name
         stages["total_ms"] = round((time.perf_counter() - started) * 1000, 1)
         self._finish_job(job_id, "done", f"{len(parsed.records)} inregistrari indexate, {len(parsed.errors)} probleme.", stages)
+        return self.get(dataset_id)
+
+    def _reindex_confirmed(self, dataset_id: str, kb_id: str, job_id: str, stages: dict, started: float) -> QADataset:
+        """Confirmed answers have no source file: re-embed the records kept in the database."""
+        with self.db.session() as session:
+            rows = session.execute(select(QARecord).where(QARecord.dataset_id == dataset_id)).scalars().all()
+            items = [(r.id, r.question, [o["text"] for o in r.options]) for r in rows]
+        try:
+            t = time.perf_counter()
+            embeddings = self.embedder.embed([question_embedding_text(q, opts) for _, q, opts in items]) if items else []
+            stages["embed_ms"] = round((time.perf_counter() - t) * 1000, 1)
+            self.store.delete_where("questions", kb_id, {"dataset_id": dataset_id})
+            if items:
+                self.store.upsert("questions", kb_id, [i for i, _, _ in items], [q for _, q, _ in items], embeddings,
+                                  [{"record_id": i, "dataset_id": dataset_id, "kb_id": kb_id, "kind": "qa", "page": -1} for i, _, _ in items])
+        except Exception as exc:  # noqa: BLE001
+            log.exception("confirmed dataset reindex crashed")
+            message = str(exc) if isinstance(exc, EmbeddingError) else f"Eroare interna: {type(exc).__name__}"
+            self._mark_failed(dataset_id, message)
+            self._finish_job(job_id, "failed", message, stages)
+            return self.get(dataset_id)
+        with self.db.session() as session:
+            dataset = session.get(QADataset, dataset_id)
+            dataset.status, dataset.record_count, dataset.embedding_provider = "indexed", len(items), self.embedder.name
+        stages["total_ms"] = round((time.perf_counter() - started) * 1000, 1)
+        self._finish_job(job_id, "done", f"{len(items)} inregistrari confirmate reindexate.", stages)
         return self.get(dataset_id)
 
     def _replace_records(self, dataset_id: str, kb_id: str, drafts: list[QARecordDraft], embeddings: list[list[float]]) -> None:
@@ -183,7 +215,7 @@ class QAService:
             dataset = session.get(QADataset, dataset_id)
             if dataset is None:
                 raise QAError("Setul nu exista.")
-            if not Path(dataset.stored_path).exists():
+            if dataset.format != CONFIRMED_FORMAT and not Path(dataset.stored_path).exists():
                 raise QAError("Fisierul original lipseste; incarca setul din nou.")
             dataset.status = "pending"
         return self.create_job(dataset_id)

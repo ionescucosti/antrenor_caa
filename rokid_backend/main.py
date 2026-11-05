@@ -23,8 +23,9 @@ from rokid_backend.core.config import Settings, load_settings
 from rokid_backend.core.logging import configure_logging
 from rokid_backend.core.security import RateLimiter, SessionSigner, hash_token, load_or_create_secret
 from rokid_backend.ingestion.service import DocumentService
-from rokid_backend.llm.factory import build_llm_provider
+from rokid_backend.llm.factory import build_llm_provider, build_web_search_provider
 from rokid_backend.models import ApiToken, new_id
+from rokid_backend.qa.candidates import CandidateService
 from rokid_backend.qa.service import QAService
 from rokid_backend.rag.embeddings import build_embedding_provider
 from rokid_backend.rag.pipeline import AnswerService
@@ -62,7 +63,7 @@ def _open_database(settings: Settings) -> tuple[Database, str]:
     return Database(url), ""
 
 
-def build_state(app: FastAPI, settings: Settings, llm=None, embedder=None) -> None:
+def build_state(app: FastAPI, settings: Settings, llm=None, embedder=None, web=None) -> None:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     app.state.settings = settings
     app.state.db, app.state.database_warning = _open_database(settings)
@@ -78,8 +79,10 @@ def build_state(app: FastAPI, settings: Settings, llm=None, embedder=None) -> No
     app.state.knowledge_bases.ensure_default()
     app.state.documents = DocumentService(app.state.db, app.state.store, app.state.embedder, settings)
     app.state.qa = QAService(app.state.db, app.state.store, app.state.embedder, settings)
+    app.state.web_search = web if web is not None else build_web_search_provider(settings)
+    app.state.candidates = CandidateService(app.state.db, app.state.store, app.state.embedder, settings)
     app.state.answers = AnswerService(app.state.qa, app.state.store, app.state.embedder, app.state.llm, settings,
-                                      app.state.knowledge_bases.exists)
+                                      app.state.knowledge_bases.exists, web=app.state.web_search, candidates=app.state.candidates)
     _seed_env_tokens(app.state.db, settings.device_tokens)
     if not settings.admin_password and not settings.admin_api_token:
         log.warning("No admin credentials configured: set ROKID_ADMIN_PASSWORD and/or ROKID_ADMIN_API_TOKEN.")
@@ -92,13 +95,13 @@ def build_state(app: FastAPI, settings: Settings, llm=None, embedder=None) -> No
                     app.state.caa.enqueue(category)
 
 
-def create_app(settings: Settings | None = None, llm=None, embedder=None) -> FastAPI:
+def create_app(settings: Settings | None = None, llm=None, embedder=None, web=None) -> FastAPI:
     settings = settings or load_settings()
     configure_logging(settings.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        build_state(app, settings, llm, embedder)
+        build_state(app, settings, llm, embedder, web)
         log.info("started", extra={"scope": settings.environment})
         try:
             yield

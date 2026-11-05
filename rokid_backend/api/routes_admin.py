@@ -9,7 +9,8 @@ from sqlalchemy import func, select
 from rokid_backend.api.deps import SESSION_COOKIE, Principal, current_principal, require_admin
 from rokid_backend.core.security import SCOPE_ADMIN, generate_token, hash_token, verify_password
 from rokid_backend.models import ApiToken, Document, IngestionJob, QADataset, QARecord, new_id
-from rokid_backend.schemas.api import JobOut, LoginIn, TokenIn, TokenOut
+from rokid_backend.qa.candidates import CandidateError
+from rokid_backend.schemas.api import CandidateDecisionIn, CandidateOut, JobOut, LoginIn, TokenIn, TokenOut
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -56,10 +57,21 @@ def status(request: Request):
         failed_sets = [{"id": d.id, "name": d.name, "error": d.error} for d in
                        session.execute(select(QADataset).where(QADataset.status == "failed").limit(20)).scalars()]
         running = session.execute(select(func.count()).select_from(IngestionJob).where(IngestionJob.status.in_(["queued", "running"]))).scalar() or 0
+        indexed = ("indexed", "indexed_with_errors")
+        current = state.embedder.name
+        stale_docs = session.execute(select(Document.filename).where(Document.status.in_(indexed), Document.embedding_provider != "",
+                                                                      Document.embedding_provider != current).limit(20)).scalars().all()
+        stale_sets = session.execute(select(QADataset.name).where(QADataset.status.in_(indexed), QADataset.embedding_provider != "",
+                                                                   QADataset.embedding_provider != current).limit(20)).scalars().all()
     return {"documents": dict(docs), "qa_datasets": dict(datasets), "qa_records": records, "jobs_running": running,
             "failed_documents": failed_docs, "failed_datasets": failed_sets,
+            "reindex_needed": {"documents": list(stale_docs), "qa_datasets": list(stale_sets)},
+            "vision_model": state.settings.vision_model_name,
             "llm_provider": state.llm.name, "embedding_provider": state.embedder.name,
             "general_knowledge_fallback": state.settings.allow_general_knowledge,
+            "answer_grounding": state.settings.answer_grounding, "single_answer": state.settings.single_answer,
+            "web_search": state.web_search.name if getattr(state, "web_search", None) is not None else "",
+            "candidates_pending": state.candidates.pending_count() if getattr(state, "candidates", None) is not None else 0,
             "data_dir": str(state.settings.data_dir), "version": state.settings.version, "time": time.time(),
             "database_url": state.settings.effective_database_url.split("@")[-1] if not getattr(state, "database_warning", "") else "sqlite (fallback)",
             "database_warning": getattr(state, "database_warning", ""), "llm_model": state.settings.llm_model_name}
@@ -107,3 +119,32 @@ def revoke_token(token_id: str, request: Request):
         if token is None:
             raise HTTPException(404, "Tokenul nu exista.")
         token.revoked = True
+
+
+# --- answer candidates (documentation / web answers waiting for confirmation) ---
+
+@router.get("/candidates", response_model=list[CandidateOut], dependencies=[Depends(require_admin)])
+def list_candidates(request: Request, knowledge_base_id: str | None = None, status: str = "pending", limit: int = 50):
+    rows = request.app.state.candidates.list(knowledge_base_id, status, limit)
+    return [CandidateOut.model_validate(c, from_attributes=True) for c in rows]
+
+
+@router.post("/candidates/{candidate_id}/confirm", dependencies=[Depends(require_admin)])
+def confirm_candidate(candidate_id: str, request: Request, payload: CandidateDecisionIn | None = None):
+    """Turn the candidate into a verified record (dataset 'Confirmate din admin');
+    `option_labels` overrides the proposed answer."""
+    try:
+        record_id = request.app.state.candidates.confirm(candidate_id, payload.option_labels if payload else None,
+                                                         payload.explanation if payload else "")
+    except CandidateError as exc:
+        raise HTTPException(404 if "nu exista" in str(exc) else 400, str(exc)) from exc
+    return {"ok": True, "record_id": record_id, "message": "Raspuns confirmat: intra in setul verificat 'Confirmate din admin'."}
+
+
+@router.post("/candidates/{candidate_id}/reject", dependencies=[Depends(require_admin)])
+def reject_candidate(candidate_id: str, request: Request):
+    try:
+        request.app.state.candidates.reject(candidate_id)
+    except CandidateError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"ok": True}

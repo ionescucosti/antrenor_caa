@@ -2,6 +2,7 @@
 knowledge base: document chunks and verified questions."""
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from dataclasses import dataclass
@@ -10,6 +11,16 @@ from typing import Any
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
+
+
+log = logging.getLogger(__name__)
+
+
+def _dimension_mismatch(exc: Exception) -> bool:
+    """ChromaDB fixes a collection's vector size at creation; after a change of
+    embedding provider every old vector is unusable (even an emptied collection
+    keeps its size)."""
+    return "dimension" in str(exc).lower()
 
 
 @dataclass
@@ -41,9 +52,21 @@ class VectorStore:
             return
         with self._lock:
             col = self._collection(kind, kb_id)
-            for start in range(0, len(ids), 500):
-                sl = slice(start, start + 500)
-                col.upsert(ids=ids[sl], documents=texts[sl], embeddings=embeddings[sl], metadatas=metadatas[sl])
+            try:
+                self._upsert_batches(col, ids, texts, embeddings, metadatas)
+            except Exception as exc:  # noqa: BLE001 - chromadb's exception classes vary between versions
+                if not _dimension_mismatch(exc):
+                    raise
+                log.warning("collection %s holds vectors of another embedding size: rebuilding it; "
+                            "other documents/datasets of this knowledge base must be reindexed", col.name)
+                self._client.delete_collection(col.name)
+                self._upsert_batches(self._collection(kind, kb_id), ids, texts, embeddings, metadatas)
+
+    @staticmethod
+    def _upsert_batches(col, ids, texts, embeddings, metadatas) -> None:
+        for start in range(0, len(ids), 500):
+            sl = slice(start, start + 500)
+            col.upsert(ids=ids[sl], documents=texts[sl], embeddings=embeddings[sl], metadatas=metadatas[sl])
 
     def delete_where(self, kind: str, kb_id: str, where: dict[str, Any]) -> None:
         with self._lock:
@@ -61,8 +84,14 @@ class VectorStore:
             col = self._collection(kind, kb_id)
             if col.count() == 0:
                 return []
-            result = col.query(query_embeddings=[embedding], n_results=min(k, col.count()), where=where,
-                               include=["documents", "metadatas", "distances"])
+            try:
+                result = col.query(query_embeddings=[embedding], n_results=min(k, col.count()), where=where,
+                                   include=["documents", "metadatas", "distances"])
+            except Exception as exc:  # noqa: BLE001
+                if not _dimension_mismatch(exc):
+                    raise
+                log.warning("collection %s was indexed with another embedding provider; reindex it (no semantic hits until then)", col.name)
+                return []
         hits = []
         for id_, doc, meta, dist in zip(result["ids"][0], result["documents"][0], result["metadatas"][0], result["distances"][0]):
             hits.append(Hit(id=id_, text=doc or "", metadata=dict(meta or {}), similarity=round(1.0 - float(dist), 4)))

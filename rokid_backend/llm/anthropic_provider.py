@@ -12,11 +12,13 @@ from rokid_backend.llm.base import LLMError
 
 class AnthropicProvider:
     def __init__(self, api_key: str, model: str = "claude-sonnet-5-5", base_url: str = "https://api.anthropic.com",
-                 timeout: float = 45.0, max_tokens: int = 700) -> None:
+                 timeout: float = 45.0, max_tokens: int = 700, vision_model: str = "") -> None:
         if not api_key:
             raise ValueError("ROKID_LLM_API_KEY is required for the Anthropic provider.")
         self.name = f"anthropic:{model}"
         self.model = model
+        self.vision_model = vision_model or model
+        self.vision_name = f"anthropic:{self.vision_model}"
         self.max_tokens = max_tokens
         self._client = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout, headers={
             "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
@@ -46,7 +48,7 @@ class AnthropicProvider:
 
     def transcribe(self, image: bytes, mime: str, prompt: str) -> str:
         body = {
-            "model": self.model, "max_tokens": 1200, "temperature": 0,
+            "model": self.vision_model, "max_tokens": 1200, "temperature": 0,
             "messages": [{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": mime, "data": base64.b64encode(image).decode()}},
                 {"type": "text", "text": prompt}]}],

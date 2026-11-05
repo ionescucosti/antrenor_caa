@@ -22,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from rokid_backend.api.deps import Principal, require_device
+from rokid_backend.core.rawtext import split_raw_question
 from rokid_backend.rag.transcribe import MAX_IMAGE_BYTES, TranscriptionError, transcribe_image
 from rokid_backend.schemas.api import AnswerRequest, AnswerResponse, CompactAnswer
 
@@ -33,10 +34,13 @@ FULL_PARAM = Query(False, description="formular: true = raspunsul detaliat (stat
 
 
 def compact(response: AnswerResponse) -> dict:
-    """{"label": "A", "text": "..."} / {"text": "..."} / {"error": "..."} - nothing else."""
+    """{"label": "A", "text": "..."} / {"text": "..."} / {"error": "..."}; plus "note" when the
+    documentation and the web disagreed (the shown answer is not verified)."""
     if response.status == "answered" and response.answer is not None:
         labels = ",".join(response.answer.option_labels) or None
-        return CompactAnswer(label=labels, text=response.answer.text or None).model_dump(exclude_none=True)
+        note = ("verifica: documentatia si internetul nu sunt de acord" if response.agreement == "disagreement"
+                else (response.message or None))
+        return CompactAnswer(label=labels, text=response.answer.text or None, note=note).model_dump(exclude_none=True)
     return CompactAnswer(error=response.message or response.status).model_dump(exclude_none=True)
 
 
@@ -77,6 +81,9 @@ def _compute(request: Request, principal: Principal, payload: AnswerRequest | No
             transcribe_ms = round((time.perf_counter() - transcribe_started) * 1000, 1)
             response = _run_pipeline(_text_request(rid, kb, transcribed), request, principal)
             response.transcribed_text = transcribed
+            if response.status == "answered" and response.answer is not None and not response.answer.option_labels \
+                    and not split_raw_question(transcribed)[1]:
+                response.message = "Optiunile nu au fost lizibile in poza; cauta pe ecran textul raspunsului afisat."
             response.timings_ms = {"transcription": transcribe_ms, **response.timings_ms}
             log.info("image answered", extra={"request_id": rid, "status": response.status, "method": method, "scope": principal.scope})
     if response is None:

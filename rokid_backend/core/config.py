@@ -10,6 +10,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Domain hint placed inside the photo-transcription prompt. Override with ROKID_TRANSCRIBE_CONTEXT ("" disables it).
+DEFAULT_TRANSCRIBE_CONTEXT = (
+    "The questions come from the Romanian ANR exam for recreational boat operators (conducator de ambarcatiune de "
+    "agrement, categories C and D): navigation rules (COLREG, R.N.D.), lights and sound signals, boat handling and "
+    "construction, legislation, first aid. They are written in Romanian with diacritics (a, a, i, s, t with marks) and "
+    "normally have exactly three options, A, B and C, which are often very short (for example 'da.', 'nu.', "
+    "'nu este precizat.'). Copy numbers, units and abbreviations exactly (m, Nd, kW, CP, Hz, COLREG, R.N.D.)."
+)
+
+
+# Domain hint for answering unknown questions (documentation + model knowledge, web search). Override with ROKID_ANSWER_CONTEXT.
+DEFAULT_ANSWER_CONTEXT = (
+    "The questions come from the Romanian ANR exam for recreational boat operators (conducator de ambarcatiune de "
+    "agrement, categories C and D): COLREG 1972, inland navigation rules (R.N.D.), Romanian legislation and sanctions, "
+    "seamanship, boat construction and handling, lights and signals, buoyage, first aid, meteorology. The expected answer "
+    "is the one the official Romanian regulations give (legislatie.just.ro, ANR materials), not a general opinion."
+)
+
 
 class Settings(BaseSettings):
     """Prefixed ROKID_* variables are canonical. A few conventional names are
@@ -76,6 +94,34 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 45.0
     llm_max_tokens: int = 700
     allow_general_knowledge: bool = False
+    llm_reasoning_effort: str = "low"      # GPT-5/GPT-6/o-series: none|minimal|low|medium|high|xhigh; "" = not sent; auto-downgraded on HTTP 400
+    llm_service_tier: str = ""             # OpenAI service_tier passthrough for lower latency (costs more); "" = not sent
+
+    # Vision: photo -> question text, before the verified Q&A lookup
+    vision_model: str = ""                 # model for photo transcription; default: the LLM model
+    vision_detail: Literal["auto", "low", "high", "original"] = "high"
+    vision_max_side: int = 1792            # photos whose longer side exceeds this (px) are downscaled before the call; 0 = never
+    vision_reasoning_effort: str = "none"  # fastest setting on reasoning models; auto-downgraded when a model rejects it
+    transcribe_context: str = DEFAULT_TRANSCRIBE_CONTEXT
+    vision_crop: Literal["auto", "off"] = "auto"      # find the bright screen/page in the photo and send only it, at full resolution
+    vision_crop_model_fallback: bool = True            # when the detector finds no screen, ask the vision model where it is (one extra small call)
+    vision_min_sharpness: float = 25.0                 # Laplacian variance of the image sent (1200 px copy); below it the photo is refused as blurry; 0 = off
+
+    # Unknown questions (not in the verified sets): documentation + model knowledge, and web search in parallel
+    answer_grounding: Literal["strict", "open"] = "open"   # strict: only the uploaded evidence; open: evidence first, model knowledge allowed
+    single_answer: bool = True             # exam questions have exactly one correct option; multi-option answers count as unsure
+    answer_context: str = DEFAULT_ANSWER_CONTEXT
+    docs_timeout_seconds: float = 15.0     # how long the pipeline waits for the documentation answer
+    web_search_enabled: bool = True        # OpenAI Responses API web_search, run in parallel with the documentation answer (openai provider only)
+    web_search_model: str = "gpt-6.1-terra"
+    web_search_reasoning_effort: str = "low"
+    web_search_context_size: Literal["low", "medium", "high"] = "medium"
+    web_search_timeout_seconds: float = 8.0
+    web_search_country: str = "RO"
+    web_search_allowed_domains: str = ""   # comma separated (max 100); empty = the whole web
+    web_search_blocked_domains: str = ""
+    web_search_prefer: bool = True         # when documentation and web disagree, show the web answer (marked "Verifica")
+    candidates_enabled: bool = True        # keep non-verified answers for review in admin (confirm -> verified set)
 
     cors_origins: list[str] = Field(default_factory=list)
 
@@ -97,6 +143,10 @@ class Settings(BaseSettings):
         if self.llm_provider in ("openai", "openai_compatible") and self.openai_model:
             return self.openai_model
         return {"openai": "gpt-4o-mini", "anthropic": "claude-sonnet-5-5"}.get(self.llm_provider, "")
+
+    @property
+    def vision_model_name(self) -> str:
+        return self.vision_model or self.llm_model_name
 
     @property
     def sqlite_path(self) -> Path:

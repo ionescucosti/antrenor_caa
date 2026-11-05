@@ -90,6 +90,32 @@ class QARecord(Base):
 Index("qa_records_kb_hash", QARecord.kb_id, QARecord.question_hash)
 
 
+class AnswerCandidate(Base):
+    """An answer given from documentation / web search (not from a verified
+    set), kept for review: confirming it creates a verified QARecord."""
+    __tablename__ = "answer_candidates"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(64), index=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_question: Mapped[str] = mapped_column(Text, default="")
+    question_hash: Mapped[str] = mapped_column(String(64), index=True)
+    options: Mapped[list[Any]] = mapped_column(JSON, default=list)          # [{"label","text"}]
+    option_labels: Mapped[list[Any]] = mapped_column(JSON, default=list)    # proposed answer
+    answer_text: Mapped[str] = mapped_column(Text, default="")
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    agreement: Mapped[str] = mapped_column(String(30), default="none")      # consensus|docs_only|web_only|disagreement
+    match_type: Mapped[str] = mapped_column(String(30), default="rag")
+    docs_labels: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    web_labels: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    sources: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    request_id: Mapped[str] = mapped_column(String(100), default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|confirmed|rejected
+    seen_count: Mapped[int] = mapped_column(Integer, default=1)
+    record_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[float] = mapped_column(Float, default=now)
+    updated_at: Mapped[float] = mapped_column(Float, default=now, onupdate=now)
+
+
 class IngestionJob(Base):
     __tablename__ = "ingestion_jobs"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)

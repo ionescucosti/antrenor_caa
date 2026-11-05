@@ -100,7 +100,8 @@ Content-Type: multipart/form-data   (sau application/x-www-form-urlencoded cand 
 | `knowledge_base_id` | nu | implicit `default` |
 
 Raspuns implicit compact, doar ce afiseaza HUD-ul: `{"label": "C", "text": "Tuple"}`; `label` lipseste la
-intrebari deschise, `"A,C"` la mai multe optiuni corecte; fara raspuns: `{"error": "motivul"}`. Cu `?full=1`
+intrebari deschise, `"A,C"` la mai multe optiuni corecte; fara raspuns: `{"error": "motivul"}`. Cand documentatia si
+internetul nu sunt de acord apare si `"note": "verifica: documentatia si internetul nu sunt de acord"`. Cu `?full=1`
 vine acelasi obiect complet ca la forma JSON.
 
 ```bash
@@ -125,6 +126,8 @@ Acelasi obiect pentru forma JSON si pentru formular cu `?full=1`:
   "processing_time_ms": 412,
   "message": "",
   "match_type": "exact_qa",
+  "agreement": "verified",
+  "candidate_id": null,
   "timings_ms": {"validation": 0.1, "exact_match": 2.4, "embedding": 0, "semantic_qa": 0, "vector_retrieval": 0, "llm": 0},
   "transcribed_text": null
 }
@@ -137,9 +140,11 @@ Acelasi obiect pentru forma JSON si pentru formular cu `?full=1`:
 | `answer.option_labels` | etichete **din blocul trimis** (niciodata inventate); `[]` la intrebari deschise |
 | `answer.text` | textul optiunii/optiunilor alese sau raspunsul scurt |
 | `answer.explanation` | explicatie scurta, in limba intrebarii |
-| `sources` | `kind` = `qa_dataset` (raspuns verificat) sau `document` (RAG), cu pagina/sectiunea cand exista |
-| `match_type` | `exact_qa`, `semantic_qa`, `rag`, `general_knowledge`, `none` |
-| `timings_ms` | timpi pe etape: `transcription` (doar cand s-a folosit poza), `validation`, `exact_match`, `embedding`, `semantic_qa`, `vector_retrieval`, `reranking`, `llm`, `answer_validation`, `serialization` |
+| `sources` | `kind` = `qa_dataset` (raspuns verificat), `document` (documentatie, cu pagina/sectiunea cand exista) sau `web` (cautare web, cu `url`) |
+| `match_type` | `exact_qa`, `semantic_qa`, `rag` (documentatie), `rag_web` (documentatie si web de acord), `web`, `general_knowledge` (cunostintele modelului, fara dovezi citate), `none` |
+| `agreement` | `verified` (set verificat), `consensus`, `docs_only`, `web_only`, `disagreement` (explicatia incepe cu „Verifica: ...”), `none` |
+| `candidate_id` | id-ul candidatului pastrat pentru confirmare in admin, pentru orice raspuns neverificat; altfel `null` |
+| `timings_ms` | timpi pe etape: `transcription` (doar cand s-a folosit poza), `validation`, `exact_match`, `embedding`, `semantic_qa`, `parallel` (ramurile in paralel), `docs_ms`, `web_ms`, `vector_retrieval`, `reranking`, `llm`, `answer_validation`, `serialization` |
 | `transcribed_text` | textul extras din poza, cand raspunsul a venit din ea; altfel `null` |
 
 Reguli de decizie:
@@ -149,7 +154,12 @@ Reguli de decizie:
   `insufficient_context` cu explicatie.
 - `invalid_question` cand textul este prea scurt, pare deteriorat de OCR, exista o singura optiune,
   optiuni goale sau duplicate, poza nu poate fi citita, ori baza de cunostinte nu exista.
-- `insufficient_context` cand nu exista dovezi sau modelul nu a putut cita surse (fundamentare stricta).
+- Intrebare necunoscuta: ramura „documentatie” (fragmente + LLM) si ramura „internet” (`web_search`) ruleaza in
+  paralel. Acord -> `rag_web`/`consensus`; dezacord -> raspunsul de pe internet cu `disagreement` si `note`;
+  o singura ramura la timp -> `docs_only`/`web_only`; un raspuns cu mai multe optiuni la o intrebare cu un singur
+  raspuns corect este tratat ca nesigur. Raspunsurile neverificate primesc `candidate_id`.
+- `insufficient_context` cand nicio ramura nu a dat un raspuns sigur (sau, cu `ROKID_ANSWER_GROUNDING=strict`,
+  cand nu exista dovezi ori modelul nu a putut cita surse).
 - `error` cand furnizorul LLM a esuat sau a returnat o structura invalida.
 
 ## Administrare (scope `admin`)
@@ -181,7 +191,13 @@ Reguli de decizie:
 - `POST /admin/login` `{"username","password"}` -> cookie `rokid_admin_session` (HttpOnly). Mutatiile
   facute cu cookie necesita antetul `X-Requested-With: rokid-admin`.
 - `POST /admin/logout`, `GET /admin/me`.
-- `GET /admin/status`: numar documente/seturi pe stare, erori de ingestie, furnizori configurati.
+- `GET /admin/status`: numar documente/seturi pe stare, erori de ingestie, furnizori configurati, `web_search`,
+  `answer_grounding`, `candidates_pending`.
+- `GET /admin/candidates?knowledge_base_id=&status=pending|confirmed|rejected|all&limit=`: raspunsurile neverificate
+  (intrebare, optiuni, litera propusa, `agreement`, `docs_labels`, `web_labels`, surse, `seen_count`).
+- `POST /admin/candidates/{id}/confirm` `{"option_labels": ["B"], "explanation": ""}` (corpul este optional) ->
+  `{"ok": true, "record_id": "rec_..."}`: creeaza/actualizeaza inregistrarea verificata in setul „Confirmate din admin”.
+- `POST /admin/candidates/{id}/reject` -> `{"ok": true}`.
 - `GET /admin/jobs?limit=`, `GET /admin/jobs/{id}`: joburi de ingestie cu timpi pe etape.
 - `GET /admin/tokens`, `POST /admin/tokens` `{"name","scope":"device|admin"}` (tokenul apare o singura
   data in raspuns), `DELETE /admin/tokens/{id}` (revocare).
