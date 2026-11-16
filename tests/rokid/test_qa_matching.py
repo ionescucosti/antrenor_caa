@@ -107,6 +107,25 @@ def test_conflicting_verified_records_abstain(client):
     assert r.json()["status"] == "insufficient_context" and "conflict" in r.json()["message"]
 
 
+def test_same_answer_with_a_longer_wording_is_not_a_conflict(client):
+    """The ANR lists repeat some questions with the correct option worded a little longer. Without options on the
+    request (a photo where only the question was readable) both records are the same answer."""
+    question = "Reusita ancorarii depinde si de folosirea corecta a lungimii paramei/lantului de ancorare si anume:"
+    short = "lungimea paramei/lantului la ancora trebuie sa fie de 3-5 ori adancimea"
+    others = ["nu sunt stabilite reguli speciale privind lungimea lantului", "lungimea paramei nu influenteaza siguranta ancorarii"]
+    for name, options, correct in (("v1.json", others + [short], "C"), ("v2.json", [short + " masurata"] + others, "A")):
+        r = upload_dataset(client, name, dataset_json([{"question": question, "options": options, "correct_answer": correct}]))
+        assert r.status_code == 202
+    body = ask(client, question).json()
+    assert body["status"] == "answered" and body["match_type"] == "exact_qa", body
+    assert body["answer"]["text"] == short + " masurata" and body["answer"]["option_labels"] == []
+    # a different answer for the same question is still a conflict
+    r = upload_dataset(client, "v3.json", dataset_json([{"question": question, "options": others + [short], "correct_answer": "A"}]))
+    assert r.status_code == 202
+    body = ask(client, question).json()
+    assert body["status"] == "insufficient_context" and "conflict" in body["message"], body
+
+
 def test_semantic_match_of_paraphrased_question(client, mock_llm):
     _install_example(client)
     r = ask(client, "Which Python type is immutable", [("A", "Set"), ("B", "Tuple"), ("C", "List"), ("D", "Dictionary")])

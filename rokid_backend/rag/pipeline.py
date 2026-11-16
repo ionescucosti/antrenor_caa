@@ -28,6 +28,16 @@ log = logging.getLogger(__name__)
 _BRANCH_NAMES = {"docs": "documentatia", "web": "internetul"}
 
 
+def _answer_words(texts: list[str]) -> list[str]:
+    return normalize_text(" ".join(sorted(texts, key=match_key))).split()
+
+
+def _same_answer(a: list[str], b: list[str]) -> bool:
+    """One answer is the other plus a short tail (at most a third more words); '10 m' vs '100 m' or 'da' vs 'nu' are not."""
+    short, long = sorted((a, b), key=len)
+    return bool(short) and long[:len(short)] == short and len(short) * 4 >= len(long) * 3
+
+
 @dataclass
 class VerifiedCandidate:
     record: QARecord
@@ -347,6 +357,13 @@ class AnswerService:
                 return ("insufficient_context", None, self._sources(candidates), f"Intrebare cunoscuta, dar raspunsul nu poate fi mapat sigur pe optiunile curente: {reasons}.")
             return None
         keys = {tuple(sorted(c.mapping.labels)) if has_options else tuple(sorted(match_key(t) for t in c.mapping.texts)) for c in confident}
+        if len(keys) > 1 and not has_options:
+            # No options to map onto (e.g. a photo where only the question was readable): the same answer stored with a
+            # few more trailing words (the ANR lists repeat some questions) is one answer. Keep the fullest wording.
+            fullest = _answer_words(max(confident, key=lambda c: len(_answer_words(c.mapping.texts))).mapping.texts)
+            if all(_same_answer(_answer_words(c.mapping.texts), fullest) for c in confident):
+                confident = [c for c in confident if _answer_words(c.mapping.texts) == fullest]
+                keys = {tuple(fullest)}
         if len(keys) > 1:
             if require_all:
                 return ("insufficient_context", None, self._sources(confident), "Inregistrarile verificate sunt in conflict pentru aceasta intrebare.")
