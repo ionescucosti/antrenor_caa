@@ -143,8 +143,8 @@ def csv_bytes(items: list[dict], kind: str) -> bytes:
     headers = ["ID", "Categorie", "Tema", "Inceput (ora locala)", "Sfarsit (ora locala)", "Stare",
                "Raspunsuri", "Corecte", "Gresite", "Fara punctaj", "Procent corecte", "Timp activ (secunde)"]
     if kind == "runs":
-        columns += ["total", "completeCategory"]
-        headers += ["Total intrebari in parcurgere", "Categorie completa cap-coada"]
+        columns += ["total", "completeCategory", "examPassed"]
+        headers += ["Total intrebari in parcurgere", "Categorie completa cap-coada", "Simulare examen admisa"]
     writer = csv.writer(output)
     writer.writerow(headers)
     for row in items:
@@ -288,6 +288,8 @@ def handler_for(app: Application):
                     return self.json(app.engine.end(data.get("sessionId", ""), data.get("reason", "paused"), bool(data.get("resume", False)), data.get("foreground")))
                 if path == "/api/reset":
                     return self.json(app.engine.reset(data.get("sessionId", "")))
+                if path == "/api/expire":
+                    return self.json(app.engine.expire(data.get("sessionId", "")))
                 if path == "/api/heartbeat":
                     return self.json(app.engine.heartbeat(data.get("sessionId", ""), bool(data.get("foreground", False))))
                 return self.json({"error": "Operatie inexistenta."}, 404)

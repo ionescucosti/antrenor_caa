@@ -21,6 +21,9 @@ Nu incarca mini-manualul: este nevoie de listele originale cu intrebari.
 
 UTILIZARE
 - Alege C sau D si "Toata categoria", ori o tema de studiu.
+- "Simulare examen": 26 de intrebari la intamplare din toate temele;
+  esti admis cu minimum 22 de raspunsuri corecte. Ai 30 de minute; cand
+  timpul expira, intrebarile fara raspuns se socotesc gresite.
 - Raspunde: apare imediat corect/gresit si raspunsul corect complet.
 - Apasa "Urmatoarea intrebare" cand ai citit confirmarea.
 - Poti inchide si reveni: progresul este pastrat in folderul date.

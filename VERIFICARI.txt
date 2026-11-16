@@ -18,6 +18,10 @@ TESTE DE LOGICA SI IMPORT
 - Prima alegere si idempotenta; nu se avanseaza fara raspuns.
 - Reluare, repornire a bazei, categorii separate, reset cu istoric.
 - Parcurgeri complete distincte de teme; procente fara intrebari necorectabile.
+- Simulare examen: 26 de intrebari proportional pe teme (minimum una din fiecare),
+  numai cu cheie completa; admis la 22 corecte, respins la 21; reluare si set nou.
+- Cronometru de 30 de minute pe timp activ: pauza il opreste, expirarea incheie
+  simularea, raspunsul intarziat este refuzat, intrebarile ramase nu sunt corecte.
 - Schimbare de sursa cu pastrarea istoricului; backup verificat ca arhiva si SQLite.
 - Validarea raspunsurilor, sesiuni vechi respinse, timp activ estimat.
 

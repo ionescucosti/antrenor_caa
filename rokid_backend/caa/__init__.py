@@ -247,6 +247,8 @@ async def post_action(request: Request, action: str = "", category: str = ""):
             return engine.end(data.get("sessionId", ""), data.get("reason", "paused"), bool(data.get("resume", False)), data.get("foreground"))
         if action == "reset":
             return engine.reset(data.get("sessionId", ""))
+        if action == "expire":
+            return engine.expire(data.get("sessionId", ""))
         if action == "heartbeat":
             return engine.heartbeat(data.get("sessionId", ""), bool(data.get("foreground", False)))
         return _error("Operatie inexistenta.", 404)

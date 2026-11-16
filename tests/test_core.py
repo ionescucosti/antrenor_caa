@@ -9,7 +9,9 @@ import unittest
 from unittest.mock import patch
 import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from engine import Engine, UserError
+from collections import Counter
+from app import csv_bytes
+from engine import Engine, UserError, exam_allocation, exam_required
 from importer import extract_bank, ImportFailure, render_cell, normalize
 from tests.fixtures import make_pdf, install_fixture
 
@@ -228,6 +230,143 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(row[0],12)
     def test_category_validation(self):
         with self.assertRaises(UserError):self.engine.start('E')
+
+
+
+class ExamAllocationTests(unittest.TestCase):
+    def test_proportional_with_every_topic(self):
+        counts={'Balizaj':25,'Constructie':157,'Legislatie':25,'Lumini':73,'Meteo':8,'Navigatie':39,'Notiuni':57,'Reguli':44,'Sonore':20,'Siguranta':68}
+        plan=exam_allocation(counts);total=sum(counts.values())
+        self.assertEqual(sum(plan.values()),26);self.assertEqual(set(plan),set(counts))
+        self.assertEqual((plan['Meteo'],plan['Constructie'],plan['Lumini']),(1,8,4))
+        for topic,n in counts.items():self.assertLess(abs(plan[topic]-26*n/total),1)
+    def test_never_more_than_a_topic_holds(self):
+        plan=exam_allocation({'a':1,'b':2,'c':100})
+        self.assertEqual(plan,{'a':1,'b':1,'c':24})
+        self.assertEqual(exam_allocation({'a':1,'b':40},30),{'a':1,'b':29})
+    def test_bank_smaller_than_exam(self):
+        self.assertEqual(exam_allocation({'a':2,'b':1,'empty':0}),{'a':2,'b':1})
+        self.assertEqual(exam_allocation({}),{})
+        self.assertEqual((exam_required(26),exam_required(3),exam_required(13)),(22,3,11))
+    def test_more_topics_than_questions(self):
+        plan=exam_allocation({f't{i:02d}':i+1 for i in range(30)})
+        self.assertEqual(sum(plan.values()),26);self.assertEqual(set(plan.values()),{1})
+        self.assertNotIn('t00',plan)  # the smallest topics are the ones left out
+
+
+class ExamTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
+        self.engine=Engine(self.root/'date')
+        self.q,self.report=install_fixture(self.engine,self.root)
+    def tearDown(self):
+        self.engine.close();self.tmp.cleanup()
+    def bank(self,sizes=(('T1',40),('T2',15),('T3',5)),ungradable=()):
+        """A synthetic bank large enough for a full exam; every key is [2]."""
+        questions=[]
+        for topic,n in sizes:
+            for _ in range(n):
+                i=len(questions)+1
+                questions.append({**self.q[0],'id':f'C-{"0"*10}-{i:04d}','ordinal':i,'topic':topic,'gradable':topic not in ungradable})
+        report={**self.report,'sha256':'f'*64,'questionCount':len(questions),'gradableCount':sum(q['gradable'] for q in questions)}
+        self.engine.install_bank('C',questions,report,'C-TEST.pdf','https://example.invalid/TECHNICAL_TEST_ONLY.pdf','manual')
+    def sit(self,wrong=0):
+        """Answer a whole exam, the first `wrong` questions incorrectly."""
+        v=self.engine.start('C','exam');seen=[]
+        while True:
+            seen.append(self.engine.question(v['question']['id']))
+            v=self.engine.answer(v['session']['id'],v['question']['id'],[0] if len(seen)<=wrong else seen[-1]['correct'])
+            if v['completed']:return v,seen
+            v=self.engine.next_question(v['session']['id'])
+    def test_draw_is_proportional_from_every_topic(self):
+        self.bank()
+        exam=self.engine.state()['categories'][0]['exam']
+        self.assertEqual(exam,{'total':26,'required':22,'minutes':30,'topics':[{'topic':'T1','count':17},{'topic':'T2','count':7},{'topic':'T3','count':2}]})
+        v,seen=self.sit()
+        self.assertEqual(v['run']['total'],26);self.assertEqual(len({q['id'] for q in seen}),26)
+        self.assertEqual(Counter(q['topic'] for q in seen),{'T1':17,'T2':7,'T3':2})
+    def test_passed_with_exactly_the_minimum(self):
+        self.bank();v,_=self.sit(wrong=4);r=v['run']
+        self.assertEqual((r['correct'],r['wrong'],r['examRequired'],r['examPassed']),(22,4,22,True))
+        self.assertTrue(r['exam']);self.assertFalse(r['completeCategory'])
+        c=self.engine.statistics()['categories'][0]
+        self.assertEqual((c['exams'],c['examsPassed'],c['completedRuns']),(1,1,0))
+        header,row=csv_bytes(self.engine.statistics()['runs'],'runs').decode('utf-8-sig').splitlines()[:2]
+        self.assertTrue(header.endswith('Simulare examen admisa'));self.assertTrue(row.endswith('True'))
+    def test_failed_below_the_minimum(self):
+        self.bank();v,_=self.sit(wrong=5)
+        self.assertEqual((v['run']['correct'],v['run']['examPassed']),(21,False))
+        c=self.engine.statistics()['categories'][0];self.assertEqual((c['exams'],c['examsPassed']),(1,0))
+    def test_resume_keeps_the_draw_and_a_new_exam_starts_over(self):
+        self.bank();v=self.engine.start('C','exam');rid=v['run']['id'];qid=v['question']['id']
+        self.assertIsNone(v['run']['examPassed'])
+        self.engine.end(v['session']['id'],'closed',True)
+        self.assertEqual(self.engine.state()['lastTopic'],'exam')
+        again=self.engine.start('C','exam');self.assertEqual((again['run']['id'],again['question']['id']),(rid,qid))
+        self.assertEqual(self.engine.start('C','all')['run']['total'],60)  # other tracks are untouched
+        fresh=self.engine.reset(self.engine.start('C','exam')['session']['id'])
+        self.assertNotEqual(fresh['run']['id'],rid);self.assertEqual((fresh['run']['cursor'],fresh['run']['total']),(0,26))
+        done,_=self.sit();self.assertEqual(done['run']['id'],fresh['run']['id'])
+        self.assertNotEqual(self.engine.start('C','exam')['run']['id'],fresh['run']['id'])
+    def clock(self,sid,seconds,last_seen=None):
+        """Set the active time already spent by a session (the exam clock)."""
+        self.engine.db.execute('UPDATE sessions SET active_seconds=?,last_seen=COALESCE(?,last_seen) WHERE id=?',(seconds,last_seen,sid));self.engine.db.commit()
+    def test_clock_counts_active_time_across_sessions(self):
+        self.bank();v=self.engine.start('C','exam');sid=v['session']['id']
+        self.assertAlmostEqual(v['run']['examRemaining'],1800,delta=2)
+        self.clock(sid,600,last_seen=1000)
+        with patch('engine.time.time',return_value=1012):
+            self.assertEqual(self.engine.heartbeat(sid,False)['examRemaining'],1188)  # 12 s in the foreground
+        with patch('engine.time.time',return_value=1500):
+            self.assertEqual(self.engine.heartbeat(sid,True)['examRemaining'],1188)  # hidden: the clock stood still
+        with patch('engine.time.time',return_value=1700):
+            self.assertEqual(self.engine.view(sid)['run']['examRemaining'],1158)  # no beacon: at most 30 s
+        self.engine.end(sid,'paused')
+        self.assertLessEqual(self.engine.state()['categories'][0]['tracks'][0]['examRemaining'],1188)
+        again=self.engine.start('C','exam');self.assertEqual(again['run']['id'],v['run']['id'])
+        self.assertAlmostEqual(again['run']['examRemaining'],1173,delta=16)  # paused time is not counted
+        other=self.engine.start('C','all');self.assertIsNone(other['run'].get('examRemaining'))
+        self.assertNotIn('examRemaining',self.engine.heartbeat(other['session']['id'],True))
+    def test_timeout_ends_exam_and_unanswered_are_not_correct(self):
+        self.bank();v=self.engine.start('C','exam');sid=v['session']['id']
+        for _ in range(3):
+            v=self.engine.answer(sid,v['question']['id'],[2]);v=self.engine.next_question(sid)
+        self.assertFalse(self.engine.expire(sid)['completed'])  # the browser clock ran ahead: nothing happens
+        self.clock(sid,1800)
+        v=self.engine.answer(sid,v['question']['id'],[2]);r=v['run']
+        self.assertTrue(v['completed']);self.assertIsNone(v['feedback'])  # the late answer is not recorded
+        self.assertEqual((r['answered'],r['correct'],r['total'],r['examTimedOut'],r['examPassed'],r['examRemaining']),(3,3,26,True,False,None))
+        self.assertEqual(v['session']['status'],'completed');self.assertFalse(self.engine.state()['autoResume'])
+        c=self.engine.statistics()['categories'][0];self.assertEqual((c['exams'],c['examsPassed']),(1,0))
+        self.assertNotEqual(self.engine.start('C','exam')['run']['id'],r['id'])
+    def test_timeout_after_enough_correct_answers_is_still_passed(self):
+        self.bank();v=self.engine.start('C','exam');sid=v['session']['id']
+        for _ in range(22):
+            v=self.engine.answer(sid,v['question']['id'],[2]);v=self.engine.next_question(sid)
+        self.clock(sid,1795,last_seen=1000)
+        with patch('engine.time.time',return_value=1004):self.assertFalse(self.engine.expire(sid)['completed'])
+        with patch('engine.time.time',return_value=1006):r=self.engine.expire(sid)['run']
+        self.assertEqual((r['status'],r['answered'],r['examTimedOut'],r['examPassed']),('completed',22,True,True))
+    def test_exam_without_time_left_cannot_be_resumed_or_advanced(self):
+        self.bank();v=self.engine.start('C','exam');sid=v['session']['id']
+        v=self.engine.answer(sid,v['question']['id'],[2]);self.clock(sid,1800)
+        v=self.engine.next_question(sid);self.assertTrue(v['completed']);self.assertEqual(v['run']['cursor'],0)
+        v=self.engine.start('C','exam');sid=v['session']['id'];self.clock(sid,1800);self.engine.end(sid,'paused')
+        v=self.engine.start('C','exam');self.assertTrue(v['completed']);self.assertTrue(v['run']['examTimedOut'])
+        self.assertEqual(v['session']['status'],'completed')
+    def test_finished_in_time_is_not_a_timeout(self):
+        self.bank();v,_=self.sit();self.assertFalse(v['run']['examTimedOut']);self.assertIsNone(v['run']['examRemaining'])
+        self.assertNotIn('examTimedOut',self.engine.view(self.engine.start('C','all')['session']['id'])['run'])
+    def test_questions_without_a_complete_key_are_left_out(self):
+        self.bank(ungradable=('T3',))
+        self.assertEqual([t['topic'] for t in self.engine.state()['categories'][0]['exam']['topics']],['T1','T2'])
+        v,seen=self.sit()
+        self.assertEqual(v['run']['ungraded'],0);self.assertTrue(all(q['gradable'] for q in seen))
+        self.assertEqual(Counter(q['topic'] for q in seen),{'T1':19,'T2':7})
+    def test_bank_smaller_than_exam_uses_every_question(self):
+        v,seen=self.sit()
+        self.assertEqual((v['run']['total'],v['run']['examRequired'],v['run']['examPassed']),(3,3,True))
+        self.assertIsNone(self.engine.state()['categories'][1]['exam'])  # D is not imported
 
 
 if __name__=='__main__':

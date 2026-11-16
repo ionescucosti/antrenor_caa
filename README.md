@@ -1,7 +1,9 @@
 # Antrenor CAA - C si D
 
 Aplicatie independenta pentru studiu, rulata local in browser. Nu este
-aplicatia oficiala ANR si nu simuleaza un barem oficial de examen.
+aplicatia oficiala ANR. Optiunea **Simulare examen** foloseste numarul de
+intrebari si baremul din metodologia ANR, dar rezultatul este unul de
+antrenament, nu un calificativ oficial.
 
 ## Un singur server: Antrenor CAA + Rokid AI RAG Backend
 
@@ -22,7 +24,8 @@ reverse proxy) doar dupa autentificare la `/admin`, pentru ca progresul tau sa n
 
 ## Ce face
 
-- Alegerea categoriei C/D si a tuturor intrebarilor sau a unei teme.
+- Alegerea categoriei C/D si a tuturor intrebarilor, a unei teme sau a unei
+  simulari de examen (26 de intrebari, admis cu minimum 22 corecte).
 - Intrebari, variante si ilustratii preluate din PDF-urile originale.
 - La o intrebare cu o singura varianta corecta, alegerea este corectata imediat.
   La mai multe variante corecte, selectezi variantele si apesi Verifica.
@@ -97,6 +100,26 @@ atribuite automat din text, nu clasificari oficiale ANR. Pot exista incadrari
 imperfecte. Pentru a parcurge toate intrebarile importate foloseste
 **Toata categoria**, indiferent de etichetele tematice.
 
+**Simulare examen** (in lista "Ce vrei sa parcurgi?") extrage la intamplare 26
+de intrebari cu cheie completa si te declara admis la minimum 22 de raspunsuri
+corecte. Cifrele sunt cele pentru clasele C si D din metodologia ANR (Partea a
+II-a: 26 de intrebari, 30 de minute, barem 22). Intrebarile vin din toate
+temele, proportional cu numarul de intrebari al fiecarei teme din banca
+importata si cel putin una din fiecare. Repartizarea urmeaza deci temele
+aplicatiei, nu disciplinele oficiale (COLREG/RND 10, marinarie 6, conducere si
+manevra 6, prim ajutor 2, legislatie 2), fiindca PDF-urile ANR nu indica
+disciplina fiecarei intrebari. O simulare intrerupta se reia cu aceleasi
+intrebari; una noua primeste alt set.
+
+Simularea are un cronometru de 30 de minute, afisat deasupra intrebarii (rosu
+in ultimele 5 minute). Cand timpul expira, simularea se incheie singura:
+raspunsurile trimise dupa aceea nu mai sunt primite, iar intrebarile ramase
+fara raspuns se socotesc gresite, ca la examen (poti fi totusi admis daca ai
+deja 22 de raspunsuri corecte). Cronometrul este tinut de server si masoara
+acelasi timp activ ca statisticile: merge cat timp simularea este deschisa pe
+ecran si se opreste la Pauza, la inchiderea paginii sau cat timp fila este
+ascunsa; la reluare continui cu timpul ramas.
+
 ANR descrie listele ca orientative, reprezentand doar o parte din intrebarile
 de examen. Aplicatia nu poate adauga intrebarile nepublicate. Formularea si
 cheia din sursa pot fi vechi, mai ales la legislatie, sanctiuni si primul ajutor.
@@ -135,6 +158,8 @@ O inchidere neasteptata este marcata ca intrerupere la urmatoarea pornire.
 sesiuni sau zile. Este completa numai dupa parcurgerea tuturor intrebarilor.
 Numai o parcurgere completa a selectiei **Toata categoria** se numara la
 categoriile parcurse cap-coada; o tema terminata ramane o parcurgere tematica.
+O simulare de examen terminata apare in istoric ca Admis sau Respins si este
+numarata separat, pe categorii (simulari admise din cele sustinute).
 
 Sunt pastrate inceputul, ultima activitate/finalul, categoria, selectia, numarul
 de raspunsuri, corecte, gresite, fara punctaj, procentul si timpul activ estimat.

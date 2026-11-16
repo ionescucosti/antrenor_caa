@@ -48,6 +48,12 @@ def test_caa_ui_and_api_work_next_to_rokid_endpoints(tmp_path):
         assert c.get("/api/report/C").status_code == 200 and c.get("/source/C").headers["content-type"] == "application/pdf"
         assert c.get("/api/export?kind=runs").headers["content-type"].startswith("text/csv")
         assert c.get("/api/stats").json()["runs"][0]["answered"] == 1
+        # exam simulation: the countdown and its expiry endpoint go through the merged server too
+        exam = c.post("/api/start", json={"category": "C", "topic": "exam"}, headers={"X-CAA-Token": token}).json()
+        assert exam["run"]["exam"] and exam["run"]["total"] == 3 and 1790 < exam["run"]["examRemaining"] <= 1800
+        beat = c.post("/api/heartbeat", json={"sessionId": exam["session"]["id"], "foreground": True}, headers={"X-CAA-Token": token}).json()
+        assert beat["active"] and 1790 < beat["examRemaining"] <= 1800
+        assert c.post("/api/expire", json={"sessionId": exam["session"]["id"]}, headers={"X-CAA-Token": token}).json()["completed"] is False
         assert c.post("/api/bogus", json={"token": token}).status_code == 404
         # the bank imported in Antrenor CAA becomes a verified Q&A dataset of the backend
         r = c.post("/api/v1/qa-datasets/sync-caa", data={"knowledge_base_id": "default"}, headers=admin_headers())

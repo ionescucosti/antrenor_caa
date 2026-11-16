@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import random
 import sqlite3
 import threading
 import time
@@ -24,6 +25,44 @@ def uid() -> str:
 
 def js(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+# Exam simulation. The figures are the ones for classes C and D in the ANR
+# methodology (Partea a II-a): one test of 26 questions, 30 minutes, passed
+# with at least 22 correct answers.
+EXAM_TOPIC = "exam"
+EXAM_QUESTIONS = 26
+EXAM_PASS = 22
+EXAM_MINUTES = 30
+
+
+def exam_required(total: int) -> int:
+    """Correct answers needed to pass; scaled down only for a bank smaller than the exam."""
+    return -(-total * EXAM_PASS // EXAM_QUESTIONS)
+
+
+def exam_allocation(counts: dict[str, int], total: int = EXAM_QUESTIONS) -> dict[str, int]:
+    """Split the exam questions between topics in proportion to the size of
+    each topic, with at least one question per topic (as long as the total
+    allows it) and never more than a topic holds."""
+    counts = {t: n for t, n in counts.items() if n > 0}
+    available = sum(counts.values())
+    total = min(total, available)
+    if not total:
+        return {}
+    quota = {t: total * n / available for t, n in counts.items()}
+    plan = {t: min(n, max(1, int(quota[t]))) for t, n in counts.items()}
+    while sum(plan.values()) < total:
+        # The most under-represented topic that still has questions left.
+        topic = max((t for t in plan if plan[t] < counts[t]), key=lambda t: (quota[t] - plan[t], t))
+        plan[topic] += 1
+    while sum(plan.values()) > total:
+        # The guaranteed minimum overshot: take from the most over-represented
+        # topic, emptying a topic only when there are more topics than questions.
+        spare = [t for t in plan if plan[t] > 1] or [t for t in plan if plan[t]]
+        topic = min(spare, key=lambda t: (quota[t] - plan[t], t))
+        plan[topic] -= 1
+    return {t: n for t, n in plan.items() if n}
 
 
 class Engine:
@@ -180,7 +219,46 @@ class Engine:
             if row["status"] != "active":
                 return {"active": False}
             self._touch(sid, foreground)
-            return {"active": True}
+            result: dict = {"active": True}
+            run = self._run(row["run_id"])
+            if run["topic"] == EXAM_TOPIC:
+                result["examRemaining"] = self._exam_remaining(run["id"])
+            return result
+
+    def _exam_seconds(self, rid: str) -> float:
+        """The exam clock: active time of the sessions of the run, including
+        what the open session has not accrued yet. Like the active time in the
+        statistics, it stops on pause and while the page is hidden."""
+        now, used = time.time(), 0.0
+        for row in self.db.execute("SELECT status,foreground,last_seen,active_seconds FROM sessions WHERE run_id=?", (rid,)):
+            used += row["active_seconds"]
+            if row["status"] == "active" and row["foreground"]:
+                used += min(30.0, max(0.0, now - row["last_seen"]))
+        return used
+
+    def _exam_remaining(self, rid: str) -> float:
+        return round(max(0.0, EXAM_MINUTES * 60 - self._exam_seconds(rid)), 1)
+
+    def _exam_timeout(self, run) -> bool:
+        """End an exam whose time is up. It counts as a finished simulation;
+        the questions left unanswered are not correct, as at the real exam."""
+        if run["topic"] != EXAM_TOPIC or run["status"] != "active" or self._exam_seconds(run["id"]) < EXAM_MINUTES * 60:
+            return False
+        now = time.time()
+        self.db.execute("UPDATE runs SET status='completed',ended_at=? WHERE id=?", (now, run["id"]))
+        self.db.execute("UPDATE sessions SET status='completed',ended_at=? WHERE run_id=? AND status='active'", (now, run["id"]))
+        self._meta("autoResume", False)
+        return True
+
+    def expire(self, sid: str) -> dict:
+        """The browser countdown reached zero. The server clock decides: an
+        exam that still has time left is returned unchanged."""
+        with self.tx():
+            session = self._session(sid)
+            if session["status"] == "active":
+                self._touch(sid)
+                self._exam_timeout(self._run(session["run_id"]))
+        return self.view(sid)
 
     def _run_summary(self, row) -> dict:
         result = dict(row)
@@ -189,21 +267,48 @@ class Engine:
         result.update(self._counts("run_id=?", (row["id"],)))
         result["fullCategory"] = row["topic"] == "all"
         result["completeCategory"] = row["topic"] == "all" and row["status"] == "completed"
+        result["exam"] = row["topic"] == EXAM_TOPIC
+        if result["exam"]:
+            result["examRequired"] = exam_required(len(ids))
+            result["examMinutes"] = EXAM_MINUTES
+            # Decided only at the end; an abandoned simulation is neither passed nor failed.
+            result["examPassed"] = result["correct"] >= result["examRequired"] if row["status"] == "completed" else None
+            result["examRemaining"] = self._exam_remaining(row["id"]) if row["status"] == "active" else None
+            result["examTimedOut"] = row["status"] == "completed" and result["answered"] < len(ids)
         result["active_seconds"] = self.db.execute(
             "SELECT COALESCE(SUM(active_seconds),0) FROM sessions WHERE run_id=?", (row["id"],)).fetchone()[0]
         return result
+
+    def _exam_pool(self, category: str) -> dict[str, list[str]]:
+        """Questions an exam may draw, by topic. Only questions with a complete
+        key, so that every answer of the simulation can be graded."""
+        pool: dict[str, list[str]] = {}
+        for qid, topic in self.db.execute(
+                "SELECT id,topic FROM questions WHERE category=? AND json_extract(payload,'$.gradable') ORDER BY ordinal", (category,)):
+            pool.setdefault(topic, []).append(qid)
+        return pool
+
+    def _exam_ids(self, category: str) -> list[str]:
+        pool = self._exam_pool(category)
+        plan = exam_allocation({topic: len(ids) for topic, ids in pool.items()})
+        ids = [qid for topic, count in plan.items() for qid in random.sample(pool[topic], count)]
+        random.shuffle(ids)
+        return ids
 
     def _new_session(self, category: str, topic: str) -> str:
         bank = self._bank(category)
         self.db.execute("UPDATE sessions SET status='interrupted',ended_at=last_seen WHERE status='active'")
         run = self.db.execute("SELECT * FROM runs WHERE category=? AND topic=? AND status='active'", (category, topic)).fetchone()
         if not run:
-            sql = "SELECT id FROM questions WHERE category=?"
-            args: list[str] = [category]
-            if topic != "all":
-                sql += " AND topic=?"
-                args.append(topic)
-            ids = [r[0] for r in self.db.execute(sql + " ORDER BY ordinal", args)]
+            if topic == EXAM_TOPIC:
+                ids = self._exam_ids(category)
+            else:
+                sql = "SELECT id FROM questions WHERE category=?"
+                args: list[str] = [category]
+                if topic != "all":
+                    sql += " AND topic=?"
+                    args.append(topic)
+                ids = [r[0] for r in self.db.execute(sql + " ORDER BY ordinal", args)]
             if not ids:
                 raise UserError("Tema selectata nu contine intrebari.")
             rid = uid()
@@ -227,6 +332,8 @@ class Engine:
             if old:
                 self._touch(old[0])
             sid = self._new_session(category, topic)
+            # An exam paused in its last seconds may have no time left to resume.
+            self._exam_timeout(self._run(self._session(sid)["run_id"]))
         return self.view(sid)
 
     def view(self, sid: str) -> dict:
@@ -255,6 +362,8 @@ class Engine:
         with self.tx():
             session = self._session(sid)
             run = self._run(session["run_id"])
+            if self._exam_timeout(run):
+                return self.view(sid)  # too late: the answer is not recorded
             ids = json.loads(run["question_ids"])
             if ids[run["cursor"]] != qid:
                 raise UserError("Intrebarea s-a schimbat. Reincarca pagina pentru progresul curent.")
@@ -284,7 +393,7 @@ class Engine:
         with self.tx():
             session = self._session(sid)
             run = self._run(session["run_id"])
-            if run["status"] != "completed":
+            if not self._exam_timeout(run) and run["status"] != "completed":
                 self._session(sid, active=True)
                 if run["status"] != "active":
                     raise UserError("Parcurgerea nu mai este activa.")
@@ -356,7 +465,7 @@ class Engine:
             categories = []
             for cat in ("C", "D"):
                 row = self.db.execute("SELECT * FROM banks WHERE category=?", (cat,)).fetchone()
-                entry: dict = {"category": cat, "count": 0, "topics": [], "tracks": []}
+                entry: dict = {"category": cat, "count": 0, "topics": [], "tracks": [], "exam": None}
                 if row:
                     report = json.loads(row["report"])
                     entry.update({"count": report["questionCount"], "gradableCount": report["gradableCount"],
@@ -365,6 +474,11 @@ class Engine:
                                   "digest": row["digest"]})
                     entry["topics"] = [dict(r) for r in self.db.execute("SELECT topic,COUNT(*) count FROM questions WHERE category=? GROUP BY topic ORDER BY topic", (cat,))]
                     entry["tracks"] = [self._run_summary(r) for r in self.db.execute("SELECT * FROM runs WHERE category=? AND status='active'", (cat,))]
+                    plan = exam_allocation({topic: len(ids) for topic, ids in self._exam_pool(cat).items()})
+                    if plan:
+                        total = sum(plan.values())
+                        entry["exam"] = {"total": total, "required": exam_required(total), "minutes": EXAM_MINUTES,
+                                         "topics": [{"topic": topic, "count": plan[topic]} for topic in sorted(plan)]}
                 categories.append(entry)
             last_run_id = self._get_meta("lastRun")
             last_run = self.db.execute("SELECT * FROM runs WHERE id=?", (last_run_id,)).fetchone() if last_run_id else None
@@ -386,8 +500,10 @@ class Engine:
                 counts = self._counts("run_id IN (SELECT id FROM runs WHERE category=?)", (category,))
                 full = [r for r in runs if r["category"] == category and r["completeCategory"]]
                 percentages = [r["percentage"] for r in full if r["percentage"] is not None]
+                exams = [r for r in runs if r["category"] == category and r["exam"] and r["status"] == "completed"]
                 categories.append({"category": category, **counts, "completedRuns": len(full),
-                                   "bestCompleted": max(percentages) if percentages else None})
+                                   "bestCompleted": max(percentages) if percentages else None,
+                                   "exams": len(exams), "examsPassed": sum(r["examPassed"] for r in exams)})
             return {"sessions": sessions, "runs": runs, "categories": categories}
 
     def details(self, kind: str, identity: str) -> list[dict]:
