@@ -85,7 +85,8 @@ def test_exact_match_with_unmappable_options_abstains(client, mock_llm):
     _install_example(client)
     r = ask(client, "Which Python type is immutable?", [("A", "List"), ("B", "Dictionary"), ("C", "Set"), ("D", "Frozenset")])
     body = r.json()
-    assert body["status"] == "insufficient_context" and body["answer"] is None and "mapat" in body["message"]
+    assert body["status"] == "answered" and body["match_type"] == "exact_qa" and body["agreement"] == "verified", body
+    assert body["answer"]["option_labels"] == [] and body["answer"]["text"] == "Tuple" and "cauta pe ecran" in body["message"]
     assert mock_llm.calls == []
 
 
@@ -103,8 +104,10 @@ def test_conflicting_verified_records_abstain(client):
     conflicting = dataset_json([{"question": "Which Python type is immutable?", "options": ["List", "Dictionary", "Tuple", "Set"], "correct_answer": "A"}])
     r = upload_dataset(client, "conflict.json", conflicting)
     assert r.status_code == 202
-    r = ask(client, "Which Python type is immutable?", [("A", "List"), ("B", "Dictionary"), ("C", "Tuple"), ("D", "Set")])
-    assert r.json()["status"] == "insufficient_context" and "conflict" in r.json()["message"]
+    body = ask(client, "Which Python type is immutable?", [("A", "List"), ("B", "Dictionary"), ("C", "Tuple"), ("D", "Set")]).json()
+    assert body["status"] == "answered" and body["agreement"] == "conflict" and body["match_type"] == "exact_qa", body
+    assert sorted(body["answer"]["option_labels"]) == ["A", "C"] and body["answer"]["text"] in ("Tuple / List", "List / Tuple")
+    assert body["message"].startswith("verifica:") and len(body["sources"]) == 2
 
 
 def test_same_answer_with_a_longer_wording_is_not_a_conflict(client):
@@ -123,7 +126,8 @@ def test_same_answer_with_a_longer_wording_is_not_a_conflict(client):
     r = upload_dataset(client, "v3.json", dataset_json([{"question": question, "options": others + [short], "correct_answer": "A"}]))
     assert r.status_code == 202
     body = ask(client, question).json()
-    assert body["status"] == "insufficient_context" and "conflict" in body["message"], body
+    assert body["status"] == "answered" and body["agreement"] == "conflict" and body["answer"]["option_labels"] == [], body
+    assert "nu sunt stabilite reguli" in body["answer"]["text"] and short in body["answer"]["text"] and body["message"].startswith("verifica:")
 
 
 def test_semantic_match_of_paraphrased_question(client, mock_llm):
@@ -183,3 +187,30 @@ def test_anr_pdf_dataset_via_existing_importer(client, tmp_path):
     r = ask(client, first["question"], [("A", "Varianta de test C"), ("B", "Varianta de test A"), ("C", "Varianta de test B")])
     assert r.json()["status"] == "answered" and r.json()["answer"]["option_labels"] == ["A"]
     assert r.json()["sources"][0]["page"] == 1
+
+
+def test_twin_questions_differing_in_one_word_are_not_a_conflict(client):
+    """The ANR lists reuse generic stems with option sets that differ in a single word (tacheti / turnicheti). The fuzzy
+    mapping of each record's correct option finds it among the current options, which used to read as a conflict."""
+    stem = "Care dintre afirmatiile de mai jos este adevarata?"
+
+    def opts(noun):
+        return [f"{noun} sunt piese metalice formate din doua coloane cilindrice care servesc la luarea voltelor la paramele date ca legaturi la mal",
+                f"{noun} sunt piese metalice in forma de T, montate pe punte, pe copastie si servesc pentru luarea voltelor la parame mai subtiri",
+                f"{noun} sunt piese metalice de ghidarea paramelor, cu minimum de frecare."]
+
+    for name, noun, correct in (("tacheti.json", "tachetii", "B"), ("turnicheti.json", "turnichetii", "C")):
+        r = upload_dataset(client, name, dataset_json([{"question": stem, "options": opts(noun), "correct_answer": correct}]))
+        assert r.status_code == 202
+    body = ask(client, stem, list(zip("ABC", opts("tachetii")))).json()
+    assert body["status"] == "answered" and body["match_type"] == "exact_qa" and body["answer"]["option_labels"] == ["B"], body
+    assert len(body["sources"]) == 1
+    # the twin, shuffled on screen and with an OCR slip in one option
+    noisy = opts("turnichetii")
+    noisy[0] = noisy[0].replace("coloane", "coIoane")
+    body = ask(client, stem, [("A", noisy[2]), ("B", noisy[0]), ("C", noisy[1])]).json()
+    assert body["status"] == "answered" and body["answer"]["option_labels"] == ["A"], body
+    # only the stem readable: nothing tells the two apart, so both answers are shown, flagged
+    body = ask(client, stem).json()
+    assert body["status"] == "answered" and body["agreement"] == "conflict" and body["answer"]["option_labels"] == [], body
+    assert body["answer"]["text"].count(" / ") == 1 and "tachetii" in body["answer"]["text"] and "turnichetii" in body["answer"]["text"]

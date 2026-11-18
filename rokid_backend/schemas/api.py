@@ -91,7 +91,8 @@ class AnswerResponse(BaseModel):
     match_type: Literal["exact_qa", "semantic_qa", "rag", "rag_web", "web", "general_knowledge", "none"] = "none"
     # verified: from a verified set; consensus: documentation and web agree; docs_only / web_only: one of them answered;
     # disagreement: both answered differently (the explanation starts with "Verifica:")
-    agreement: Literal["verified", "consensus", "docs_only", "web_only", "disagreement", "none"] = "none"
+    # conflict: verified records disagree; every distinct answer is shown, the most plausible first, with a note
+    agreement: Literal["verified", "conflict", "consensus", "docs_only", "web_only", "disagreement", "none"] = "none"
     candidate_id: str | None = None       # non-verified answers are kept for review in admin (confirm -> verified set)
     timings_ms: dict[str, float] = Field(default_factory=dict)
     transcribed_text: str | None = None   # set when the answer came from the uploaded image

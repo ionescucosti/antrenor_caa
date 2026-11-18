@@ -45,8 +45,8 @@ function setView(view) {
 document.querySelectorAll('#nav [data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
 $('logout').onclick = async () => { await api('/api/v1/admin/logout', { method: 'POST' }); state.me = null; renderLogin(); };
 
-function agreementLabel(a) { return ({ verified: 'verificat', consensus: 'documentatie + internet de acord', docs_only: 'doar documentatie', web_only: 'doar internet', disagreement: 'DEZACORD documentatie / internet', none: '-' })[a] || a; }
-function agreementClass(a) { return a === 'verified' || a === 'consensus' ? 'ok' : a === 'disagreement' ? 'failed' : a === 'none' ? '' : 'pending'; }
+function agreementLabel(a) { return ({ verified: 'verificat', conflict: 'CONFLICT intre inregistrarile verificate', consensus: 'documentatie + internet de acord', docs_only: 'doar documentatie', web_only: 'doar internet', disagreement: 'DEZACORD documentatie / internet', none: '-' })[a] || a; }
+function agreementClass(a) { return a === 'verified' || a === 'consensus' ? 'ok' : a === 'disagreement' || a === 'conflict' ? 'failed' : a === 'none' ? '' : 'pending'; }
 function sourceLine(s) { const name = esc(s.document_name) + (s.page ? ' p.' + s.page : '') + (s.section ? ' · ' + esc(s.section) : ''); return `<li>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${name}</a>` : name} <span class="tag">${esc(s.kind)}</span>${s.score != null ? ' <span class="muted small">' + s.score + '</span>' : ''}</li>`; }
 
 function warnList(ws) { return ws && ws.length ? `<details><summary>${ws.length} observatii</summary><ul class="small">${ws.map(w => `<li>${esc(w)}</li>`).join('')}</ul></details>` : ''; }

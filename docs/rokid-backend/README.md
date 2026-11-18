@@ -25,6 +25,12 @@ Ordinea de precedenta la raspuns:
 
 1. **Potrivire exacta** cu o intrebare verificata (fara apel LLM; raspunsul corect este mapat pe
    optiunile curente dupa **text**, nu dupa litera, deci optiunile reordonate primesc eticheta corecta).
+   Cand mai multe inregistrari verificate au acelasi enunt (listele ANR refolosesc "Care dintre afirmatiile de
+   mai jos este adevarata?" pentru intrebari ale caror optiuni difera printr-un singur cuvant: tacheti /
+   turnicheti), ramane doar inregistrarea ale carei optiuni sunt cele de pe ecran; celelalte sunt alte
+   intrebari, nu un conflict. Daca inregistrarile verificate chiar dau raspunsuri diferite, se afiseaza toate
+   literele (cea mai probabila prima) cu `agreement: conflict` si o nota „verifica: ...”; daca raspunsul verificat nu
+   se regaseste printre optiunile citite, se afiseaza textul lui, fara litera, cu o nota.
 2. **Potrivire semantica** cu o intrebare verificata (similaritate peste prag, fara conflicte).
 3. **Intrebare necunoscuta**: in paralel, raspunsul din **documentatie** (fragmente din documente + LLM, iesire
    structurata validata) si raspunsul prin **cautare web** (OpenAI `web_search`). Daca sunt de acord, raspunsul

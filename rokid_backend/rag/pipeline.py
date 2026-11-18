@@ -8,6 +8,7 @@ candidate that admin can confirm into the verified set."""
 from __future__ import annotations
 
 import concurrent.futures as cf
+import difflib
 import logging
 import time
 from dataclasses import dataclass, field
@@ -36,6 +37,36 @@ def _same_answer(a: list[str], b: list[str]) -> bool:
     """One answer is the other plus a short tail (at most a third more words); '10 m' vs '100 m' or 'da' vs 'nu' are not."""
     short, long = sorted((a, b), key=len)
     return bool(short) and long[:len(short)] == short and len(short) * 4 >= len(long) * 3
+
+
+OPTION_SET_MARGIN = 0.02
+
+
+def _option_agreement(record: QARecord, options: list[Option]) -> float | None:
+    """How well a verified record's own options match the current ones, order-independent, 0..1
+    (1.0 = every stored option appears verbatim on screen). None when the record stores no options."""
+    stored = [match_key(strip_option_label(str(o.get("text", "")) if isinstance(o, dict) else str(o))) for o in (record.options or [])]
+    stored = [t for t in stored if t]
+    if not stored:
+        return None
+    current = [match_key(strip_option_label(o.text)) for o in options]
+    best = [max((1.0 if t == c else difflib.SequenceMatcher(None, t, c).ratio()) for c in current) for t in stored]
+    return sum(best) / len(best)
+
+
+def _same_option_set(candidates: list[VerifiedCandidate], options: list[Option]) -> list[VerifiedCandidate]:
+    """The ANR lists reuse generic stems ("Care dintre afirmatiile de mai jos este adevarata?") for several questions
+    whose option sets differ in a single word (tacheti / turnicheti), so the fuzzy mapping of the correct option finds
+    an answer for each of them among the options on screen. The question asked is the record whose options are the
+    ones on screen; records whose options fit clearly worse are other questions, not a conflict."""
+    if len(candidates) < 2 or not options:
+        return candidates
+    scored = [(c, _option_agreement(c.record, options)) for c in candidates]
+    best = max((score for _, score in scored if score is not None), default=None)
+    if best is None:
+        return candidates
+    kept = [(c, score) for c, score in scored if score is None or score >= best - OPTION_SET_MARGIN]
+    return [c for c, _ in sorted(kept, key=lambda cs: -(cs[1] if cs[1] is not None else best))]
 
 
 @dataclass
@@ -93,13 +124,13 @@ class AnswerService:
         # 1. exact verified match
         with timer.stage("exact_match"):
             exact = self.qa.exact_matches(req.knowledge_base_id, req.question)
-            candidates = [VerifiedCandidate(r, 1.0, self._map(r, req)) for r in exact]
+            candidates = _same_option_set([VerifiedCandidate(r, 1.0, self._map(r, req)) for r in exact], req.options)
         if candidates:
             outcome = self._decide_verified(candidates, req, has_options, require_all=True)
             if outcome is not None:
-                status, answer, sources, message = outcome
+                status, answer, sources, message, agreement = outcome
                 return self._finish(req, timer, status, answer, sources, message, "exact_qa" if status == "answered" else "none",
-                                    "verified" if status == "answered" else "none")
+                                    agreement if status == "answered" else "none")
 
         # 2. semantic verified match
         with timer.stage("embedding"):
@@ -112,12 +143,12 @@ class AnswerService:
         with timer.stage("semantic_qa"):
             semantic = [VerifiedCandidate(r, s, self._map(r, req)) for r, s in
                         self.qa.semantic_matches(req.knowledge_base_id, vector, self.settings.top_k_questions)]
-            strong = [c for c in semantic if c.similarity >= self.settings.semantic_question_threshold]
+            strong = _same_option_set([c for c in semantic if c.similarity >= self.settings.semantic_question_threshold], req.options)
         if strong:
             outcome = self._decide_verified(strong, req, has_options, require_all=False)
             if outcome is not None and outcome[0] == "answered":
-                status, answer, sources, message = outcome
-                return self._finish(req, timer, status, answer, sources, message, "semantic_qa", "verified")
+                status, answer, sources, message, agreement = outcome
+                return self._finish(req, timer, status, answer, sources, message, "semantic_qa", agreement)
 
         # 3. unknown question: documentation and web search in parallel
         started = time.perf_counter()
@@ -349,12 +380,22 @@ class AnswerService:
                                       self.settings.option_match_threshold, self.settings.option_match_margin)
 
     def _decide_verified(self, candidates: list[VerifiedCandidate], req: AnswerRequest, has_options: bool, require_all: bool):
-        """Returns (status, answer, sources, message) or None to fall through."""
+        """Returns (status, answer, sources, message, agreement) or None to fall through."""
         confident = [c for c in candidates if c.mapping.confident]
         if not confident:
             if require_all:
+                # Known question whose verified answer is not found among the options as read (OCR slip, reworded
+                # option): show the verified text so the wearer can look for it on screen, rather than nothing.
+                texts = []
+                for c in candidates:
+                    for t in c.record.correct_texts:
+                        if t and t not in texts:
+                            texts.append(t)
                 reasons = "; ".join(sorted({c.mapping.reason for c in candidates}))
-                return ("insufficient_context", None, self._sources(candidates), f"Intrebare cunoscuta, dar raspunsul nu poate fi mapat sigur pe optiunile curente: {reasons}.")
+                answer = Answer(option_labels=[], text=" / ".join(texts),
+                                explanation=f"Raspuns verificat, dar fara litera: {reasons}."[:600])
+                return ("answered", answer, self._sources(candidates),
+                        "Raspunsul verificat nu se regaseste clar printre optiunile citite; cauta pe ecran textul afisat.", "verified")
             return None
         keys = {tuple(sorted(c.mapping.labels)) if has_options else tuple(sorted(match_key(t) for t in c.mapping.texts)) for c in confident}
         if len(keys) > 1 and not has_options:
@@ -366,7 +407,7 @@ class AnswerService:
                 keys = {tuple(fullest)}
         if len(keys) > 1:
             if require_all:
-                return ("insufficient_context", None, self._sources(confident), "Inregistrarile verificate sunt in conflict pentru aceasta intrebare.")
+                return self._conflict(confident, has_options)
             # semantic: trust the best only if clearly ahead of a conflicting one
             best = max(confident, key=lambda c: c.similarity)
             rivals = [c for c in confident if c is not best and (tuple(sorted(c.mapping.labels)) != tuple(sorted(best.mapping.labels)))]
@@ -379,7 +420,29 @@ class AnswerService:
             explanation = f"{explanation} (intrebare similara, {best.similarity:.0%})"
         answer = Answer(option_labels=best.mapping.labels if has_options else [],
                         text="; ".join(best.mapping.texts), explanation=explanation[:600])
-        return ("answered", answer, self._sources(confident), "")
+        return ("answered", answer, self._sources(confident), "", "verified")
+
+    def _conflict(self, confident: list[VerifiedCandidate], has_options: bool):
+        """Verified records disagree (the bank itself conflicts, or twins the options could not tell apart): show every
+        distinct answer, the most plausible first, flagged as a conflict, rather than no answer at all."""
+        names = self.qa.dataset_names({c.record.dataset_id for c in confident})
+        labels, texts, parts, seen = [], [], [], set()
+        for c in confident:
+            key = tuple(sorted(c.mapping.labels)) if has_options else tuple(sorted(match_key(t) for t in c.mapping.texts))
+            if key in seen:
+                continue
+            seen.add(key)
+            labels.extend(label for label in c.mapping.labels if label not in labels)
+            text = "; ".join(c.mapping.texts)
+            if text not in texts:
+                texts.append(text)
+            ds = names.get(c.record.dataset_id)
+            where = (ds.name if ds else "set verificat") + (f" nr. {c.record.source.get('number')}" if c.record.source.get("number") else "")
+            parts.append(f"{','.join(c.mapping.labels) if has_options else text} ({where})")
+        shown = ", ".join(labels) if has_options else " / ".join(texts)
+        answer = Answer(option_labels=labels if has_options else [], text=" / ".join(texts),
+                        explanation=("Inregistrarile verificate dau raspunsuri diferite, primul este cel mai probabil: " + "; ".join(parts))[:600])
+        return ("answered", answer, self._sources(confident), f"verifica: inregistrarile verificate dau raspunsuri diferite ({shown})", "conflict")
 
     def _sources(self, candidates: list[VerifiedCandidate]) -> list[SourceRef]:
         datasets = self.qa.dataset_names({c.record.dataset_id for c in candidates})

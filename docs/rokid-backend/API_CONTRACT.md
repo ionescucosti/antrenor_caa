@@ -142,7 +142,7 @@ Acelasi obiect pentru forma JSON si pentru formular cu `?full=1`:
 | `answer.explanation` | explicatie scurta, in limba intrebarii |
 | `sources` | `kind` = `qa_dataset` (raspuns verificat), `document` (documentatie, cu pagina/sectiunea cand exista) sau `web` (cautare web, cu `url`) |
 | `match_type` | `exact_qa`, `semantic_qa`, `rag` (documentatie), `rag_web` (documentatie si web de acord), `web`, `general_knowledge` (cunostintele modelului, fara dovezi citate), `none` |
-| `agreement` | `verified` (set verificat), `consensus`, `docs_only`, `web_only`, `disagreement` (explicatia incepe cu „Verifica: ...”), `none` |
+| `agreement` | `verified` (set verificat), `conflict` (inregistrarile verificate dau raspunsuri diferite: toate literele, cea mai probabila prima, plus `note`), `consensus`, `docs_only`, `web_only`, `disagreement` (explicatia incepe cu „Verifica: ...”), `none` |
 | `candidate_id` | id-ul candidatului pastrat pentru confirmare in admin, pentru orice raspuns neverificat; altfel `null` |
 | `timings_ms` | timpi pe etape: `transcription` (doar cand s-a folosit poza), `validation`, `exact_match`, `embedding`, `semantic_qa`, `parallel` (ramurile in paralel), `docs_ms`, `web_ms`, `vector_retrieval`, `reranking`, `llm`, `answer_validation`, `serialization` |
 | `transcribed_text` | textul extras din poza, cand raspunsul a venit din ea; altfel `null` |
